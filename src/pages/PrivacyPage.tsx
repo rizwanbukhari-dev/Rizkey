@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, HardDrive, Lock, Cloud, ArrowLeft } from 'lucide-react';
+import { Shield, HardDrive, Lock, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 export const PrivacyPage: React.FC = () => {
   return (
@@ -18,7 +18,7 @@ export const PrivacyPage: React.FC = () => {
           <span>Privacy & Local Storage</span>
         </h1>
         <p className="text-xs sm:text-sm text-[#989A92] mt-1">
-          How RizKey handles your typing data, browser storage, and optional cloud accounts.
+          How RizKey handles your typing data and browser storage with zero accounts required.
         </p>
       </div>
 
@@ -48,17 +48,17 @@ export const PrivacyPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Optional Cloud Sync */}
+        {/* No Accounts Required */}
         <div className="p-6 rounded-2xl bg-[#272824] border border-[#353630]">
           <h2 className="text-base font-bold text-[#ECEBE4] flex items-center gap-2 mb-3">
-            <Cloud className="w-5 h-5 text-sky-400" />
-            <span>3. Optional Supabase Cloud Synchronization</span>
+            <CheckCircle2 className="w-5 h-5 text-sky-400" />
+            <span>3. No Accounts, Passwords, or Registration</span>
           </h2>
           <p className="mb-3">
-            If you optionally choose to register an account with Supabase, only your high-level profile statistics (WPM history, completed lessons, streaks, and settings) will be synchronized with your private Supabase database record.
+            RizKey requires no accounts, no usernames, no passwords, and no email addresses. You can immediately access every lesson, practice mode, developer lab, game, and analytics view without ever creating an account or logging in.
           </p>
           <p>
-            Database tables are guarded with PostgreSQL Row Level Security (RLS) policies, ensuring only you can read or update your personal records using authenticated tokens.
+            Your practice data remains safely stored in your browser's private storage, completely immune to remote data leaks or credential breaches.
           </p>
         </div>
 

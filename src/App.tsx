@@ -16,7 +16,6 @@ import { StatisticsPage } from './pages/StatisticsPage';
 import { AchievementsPage } from './pages/AchievementsPage';
 import { CustomTextPage } from './pages/CustomTextPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { AccountPage } from './pages/AccountPage';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
@@ -45,7 +44,6 @@ export const App: React.FC = () => {
                   <Route path="/custom-text" element={<CustomTextPage />} />
                   <Route path="/custom" element={<CustomTextPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/account" element={<AccountPage />} />
                   <Route path="/privacy" element={<PrivacyPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>

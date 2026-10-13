@@ -76,6 +76,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const totalKeystrokesRef = useRef(0);
   const correctKeystrokesRef = useRef(0);
   const errorKeystrokesRef = useRef(0);
+  const extraCharsRef = useRef(0);
   const mistakesRef = useRef<Record<string, number>>({});
   const timelineRef = useRef<TimelinePoint[]>([]);
   const lastTimelineSecondRef = useRef(0);
@@ -98,11 +99,12 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     typedHistoryRef.current = typedHistory;
   }, [typedHistory]);
 
-  // DOM elements
+  // DOM elements & Timers
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const tickerRef = useRef<number | null>(null);
+  const completionTimeoutRef = useRef<number | null>(null);
   const lastKeyDownHandledRef = useRef<boolean>(false);
 
   // Helper: compute current net correct characters
@@ -116,8 +118,8 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         const target = targetWords[i] || '';
 
         if (typed === target) {
-          // Entire word matched + trailing space
-          correct += target.length + 1;
+          // Entire word matched + trailing space (except trailing space after last word of test)
+          correct += target.length + (i < targetWords.length - 1 ? 1 : 0);
         } else {
           // Count exact character matches in imperfect word
           for (let c = 0; c < Math.min(typed.length, target.length); c++) {
@@ -130,8 +132,8 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
       // Currently typing word
       const currentTarget = targetWords[curWordIdx] || '';
-      for (let c = 0; c < currentVal.length; c++) {
-        if (c < currentTarget.length && currentVal[c] === currentTarget[c]) {
+      for (let c = 0; c < Math.min(currentVal.length, currentTarget.length); c++) {
+        if (currentVal[c] === currentTarget[c]) {
           correct++;
         }
       }
@@ -141,8 +143,17 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     [targetWords]
   );
 
-  // Reset all state when test text or mode changes
-  useEffect(() => {
+  // Comprehensive reset: clears all timers, intervals, counters, and restores clean initial state
+  const resetEngine = useCallback(() => {
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
+    if (completionTimeoutRef.current) {
+      clearTimeout(completionTimeoutRef.current);
+      completionTimeoutRef.current = null;
+    }
+
     setWordIndex(0);
     wordIndexRef.current = 0;
     setTypedHistory([]);
@@ -167,17 +178,58 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     totalKeystrokesRef.current = 0;
     correctKeystrokesRef.current = 0;
     errorKeystrokesRef.current = 0;
+    extraCharsRef.current = 0;
     mistakesRef.current = {};
     timelineRef.current = [];
     lastTimelineSecondRef.current = 0;
 
-    if (tickerRef.current) {
-      clearInterval(tickerRef.current);
-      tickerRef.current = null;
-    }
-
     inputRef.current?.focus();
-  }, [initialText, timeLimit, wordLimit, mode]);
+  }, [timeLimit]);
+
+  // Reset all state when test text or mode parameters change
+  useEffect(() => {
+    resetEngine();
+  }, [initialText, timeLimit, wordLimit, mode, resetEngine]);
+
+  // Clean up all timers and intervals on unmount
+  useEffect(() => {
+    return () => {
+      if (tickerRef.current) {
+        clearInterval(tickerRef.current);
+        tickerRef.current = null;
+      }
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update live metrics on keystrokes and timer ticks
+  const updateLiveMetrics = useCallback(() => {
+    if (!startTimeRef.current || !isStarted || isFinished) return;
+
+    const now = performance.now();
+    const grossElapsedMs = now - startTimeRef.current - totalPausedDurationRef.current;
+    const elapsedSeconds = Math.max(0.001, grossElapsedMs / 1000);
+
+    const netCorrect = getNetCorrectChars(
+      typedHistoryRef.current,
+      currentTypedRef.current,
+      wordIndexRef.current
+    );
+    const totalKeys = totalKeystrokesRef.current;
+    const correctKeys = correctKeystrokesRef.current;
+
+    // Standard WPM: only display after 0.5s to avoid visual spike on 1st keystroke
+    const wpm = elapsedSeconds >= 0.5 ? calculateWpm(netCorrect, elapsedSeconds) : 0;
+    const rawWpm = elapsedSeconds >= 0.5 ? calculateRawWpm(totalKeys, elapsedSeconds) : 0;
+    const acc = calculateAccuracy(correctKeys, totalKeys);
+
+    setLiveWpm(wpm);
+    setLiveRawWpm(rawWpm);
+    setLiveAccuracy(acc);
+  }, [isStarted, isFinished, getNetCorrectChars]);
 
   // Finish test callback
   const finishTest = useCallback(
@@ -193,7 +245,11 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
       soundEngine.playCompletionChime(settings.soundVolume);
 
-      const netCorrect = getNetCorrectChars(typedHistory, currentTyped, wordIndex);
+      const curHistory = typedHistoryRef.current;
+      const curTyped = currentTypedRef.current;
+      const curWordIdx = wordIndexRef.current;
+
+      const netCorrect = getNetCorrectChars(curHistory, curTyped, curWordIdx);
       const totalKeys = Math.max(1, totalKeystrokesRef.current);
       const correctKeys = correctKeystrokesRef.current;
       const errorKeys = errorKeystrokesRef.current;
@@ -203,11 +259,20 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       const finalRawWpm = calculateRawWpm(totalKeys, duration);
       const finalAccuracy = calculateAccuracy(correctKeys, totalKeys);
 
+      let missedChars = 0;
+      const currentTarget = targetWords[curWordIdx] || '';
+      if (curTyped.length < currentTarget.length) {
+        missedChars += currentTarget.length - curTyped.length;
+      }
+      for (let i = curWordIdx + 1; i < targetWords.length; i++) {
+        missedChars += (targetWords[i] ? targetWords[i].length + 1 : 0);
+      }
+
       const charStats: CharStats = {
         correct: netCorrect,
         incorrect: errorKeys,
-        extra: Math.max(0, totalKeys - netCorrect - errorKeys),
-        missed: 0,
+        extra: extraCharsRef.current,
+        missed: missedChars,
         total: totalKeys,
       };
 
@@ -229,7 +294,10 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         mistakes: mistakesRef.current,
       };
 
-      setTimeout(() => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+      }
+      completionTimeoutRef.current = window.setTimeout(() => {
         onComplete(resultPayload);
       }, 0);
     },
@@ -238,9 +306,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       settings.soundVolume,
       settings.difficulty,
       getNetCorrectChars,
-      typedHistory,
-      currentTyped,
-      wordIndex,
+      targetWords,
       onComplete,
       mode,
       timeLimit,
@@ -248,6 +314,17 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       toast,
     ]
   );
+
+  // Stable refs for callbacks invoked in ticker interval
+  const finishTestRef = useRef(finishTest);
+  useEffect(() => {
+    finishTestRef.current = finishTest;
+  }, [finishTest]);
+
+  const updateLiveMetricsRef = useRef(updateLiveMetrics);
+  useEffect(() => {
+    updateLiveMetricsRef.current = updateLiveMetrics;
+  }, [updateLiveMetrics]);
 
   // Pause / Resume handler
   const togglePause = useCallback(() => {
@@ -268,9 +345,21 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     }
   }, [isStarted, isFinished, isPaused]);
 
-  // Smooth real-time statistics ticker (runs every 100ms when started & active)
+  // Robust real-time countdown & stats ticker (runs every 100ms when started & active)
   useEffect(() => {
-    if (!isStarted || isFinished || isPaused) return;
+    if (!isStarted || isFinished || isPaused) {
+      if (tickerRef.current) {
+        clearInterval(tickerRef.current);
+        tickerRef.current = null;
+      }
+      return;
+    }
+
+    // Clear any prior interval to guarantee only a single timer runs
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
 
     tickerRef.current = window.setInterval(() => {
       if (!startTimeRef.current) return;
@@ -280,37 +369,38 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       const elapsedSeconds = grossElapsedMs / 1000;
       if (elapsedSeconds <= 0) return;
 
-      const netCorrect = getNetCorrectChars(typedHistory, currentTyped, wordIndex);
-      const totalKeys = totalKeystrokesRef.current;
-      const correctKeys = correctKeystrokesRef.current;
+      // Update live metrics (WPM, accuracy) smoothly
+      updateLiveMetricsRef.current();
 
-      const wpm = calculateWpm(netCorrect, elapsedSeconds);
-      const rawWpm = calculateRawWpm(totalKeys, elapsedSeconds);
-      const acc = calculateAccuracy(correctKeys, totalKeys);
-
-      setLiveWpm(wpm);
-      setLiveRawWpm(rawWpm);
-      setLiveAccuracy(acc);
-
-      // Record timeline point each full second
+      // Record timeline point each whole second
       const currentFullSecond = Math.floor(elapsedSeconds);
       if (currentFullSecond > lastTimelineSecondRef.current) {
         lastTimelineSecondRef.current = currentFullSecond;
+        const netCorrect = getNetCorrectChars(
+          typedHistoryRef.current,
+          currentTypedRef.current,
+          wordIndexRef.current
+        );
         timelineRef.current.push({
           second: currentFullSecond,
-          wpm,
-          rawWpm,
+          wpm: calculateWpm(netCorrect, elapsedSeconds),
+          rawWpm: calculateRawWpm(totalKeystrokesRef.current, elapsedSeconds),
           errors: errorKeystrokesRef.current,
         });
       }
 
-      // Time mode expiration
+      // Time mode countdown & expiration
       if (mode === 'time') {
         const remaining = Math.max(0, Math.ceil(timeLimit - elapsedSeconds));
         setDisplayTime(remaining);
 
-        if (elapsedSeconds >= timeLimit) {
-          finishTest(timeLimit);
+        if (elapsedSeconds >= timeLimit || remaining <= 0) {
+          setDisplayTime(0);
+          if (tickerRef.current) {
+            clearInterval(tickerRef.current);
+            tickerRef.current = null;
+          }
+          finishTestRef.current(timeLimit);
         }
       }
     }, 100);
@@ -318,20 +408,10 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     return () => {
       if (tickerRef.current) {
         clearInterval(tickerRef.current);
+        tickerRef.current = null;
       }
     };
-  }, [
-    isStarted,
-    isFinished,
-    isPaused,
-    mode,
-    timeLimit,
-    getNetCorrectChars,
-    typedHistory,
-    currentTyped,
-    wordIndex,
-    finishTest,
-  ]);
+  }, [isStarted, isFinished, isPaused, mode, timeLimit, getNetCorrectChars]);
 
   // Start timer on first meaningful keystroke
   const startTestIfNeeded = () => {
@@ -360,7 +440,6 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const handleCharacterInput = useCallback(
     (char: string) => {
       if (isFinished || isPaused) return;
-      startTestIfNeeded();
 
       const curWordIdx = wordIndexRef.current;
       const curTyped = currentTypedRef.current;
@@ -369,7 +448,8 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
       // Space: submit active word and advance
       if (char === ' ') {
-        if (curTyped.length === 0) return; // Prevent multiple empty spaces
+        if (curTyped.length === 0) return; // Prevent multiple or leading empty spaces
+        startTestIfNeeded();
 
         totalKeystrokesRef.current++;
         const isWordFullyCorrect = curTyped === currentTargetWord;
@@ -397,21 +477,18 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         setWordIndex(nextWordIdx);
 
         setLastKeystrokeError(false);
-
+        updateLiveMetrics();
         checkWordsCompletion(nextHistory);
         return;
       }
 
       // Single printable character
+      startTestIfNeeded();
       totalKeystrokesRef.current++;
-      const expectedChar = currentTargetWord[curTyped.length];
-      const isCorrect = expectedChar === char;
 
-      if (isCorrect) {
-        correctKeystrokesRef.current++;
-        soundEngine.playKey(settings.soundTheme, settings.soundVolume);
-        setLastKeystrokeError(false);
-      } else {
+      const isExtra = curTyped.length >= currentTargetWord.length;
+      if (isExtra) {
+        extraCharsRef.current++;
         errorKeystrokesRef.current++;
         if (settings.playErrorSound) {
           soundEngine.playError(settings.soundVolume);
@@ -419,15 +496,33 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
           soundEngine.playKey(settings.soundTheme, settings.soundVolume);
         }
         setLastKeystrokeError(true);
+      } else {
+        const expectedChar = currentTargetWord[curTyped.length];
+        const isCorrect = expectedChar === char;
 
-        if (expectedChar) {
-          mistakesRef.current[expectedChar] = (mistakesRef.current[expectedChar] || 0) + 1;
+        if (isCorrect) {
+          correctKeystrokesRef.current++;
+          soundEngine.playKey(settings.soundTheme, settings.soundVolume);
+          setLastKeystrokeError(false);
+        } else {
+          errorKeystrokesRef.current++;
+          if (settings.playErrorSound) {
+            soundEngine.playError(settings.soundVolume);
+          } else {
+            soundEngine.playKey(settings.soundTheme, settings.soundVolume);
+          }
+          setLastKeystrokeError(true);
+
+          if (expectedChar) {
+            mistakesRef.current[expectedChar] = (mistakesRef.current[expectedChar] || 0) + 1;
+          }
         }
       }
 
       const nextTyped = curTyped + char;
       currentTypedRef.current = nextTyped;
       setCurrentTyped(nextTyped);
+      updateLiveMetrics();
 
       // Check if last word finished
       const isLastWord =
@@ -454,6 +549,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       settings.playErrorSound,
       mode,
       wordLimit,
+      updateLiveMetrics,
     ]
   );
 
@@ -470,6 +566,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         currentTypedRef.current = '';
         setCurrentTyped('');
         setLastKeystrokeError(false);
+        updateLiveMetrics();
         return;
       }
 
@@ -478,6 +575,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         currentTypedRef.current = nextTyped;
         setCurrentTyped(nextTyped);
         setLastKeystrokeError(false);
+        updateLiveMetrics();
       } else if (curWordIdx > 0) {
         // Jump back to previous word if it had mistakes
         const prevTyped = curHistory[curWordIdx - 1];
@@ -493,10 +591,11 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
           const nextHistory = curHistory.slice(0, -1);
           typedHistoryRef.current = nextHistory;
           setTypedHistory(nextHistory);
+          updateLiveMetrics();
         }
       }
     },
-    [isFinished, isPaused, targetWords]
+    [isFinished, isPaused, targetWords, updateLiveMetrics]
   );
 
   // Desktop keyboard event handler (physical keyboard shortcuts & 0ms latency typing)
@@ -507,6 +606,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     // Handle Quick Restart shortcut
     if (e.key === 'Tab') {
       e.preventDefault();
+      resetEngine();
       onRestart();
       return;
     }
@@ -740,9 +840,10 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                resetEngine();
                 onRestart();
               }}
-              className="p-2 rounded-xl bg-[#272824] hover:bg-[#32332B] text-[#989A92] hover:text-[#ECEBE4] border border-[#353630] transition-colors shadow-xs"
+              className="p-2 rounded-xl bg-[#272824] hover:bg-[#32332B] text-[#989A92] hover:text-[#ECEBE4] border border-[#353630] transition-colors shadow-xs cursor-pointer"
               aria-label="Restart test"
             >
               <RotateCcw className="w-4 h-4" />

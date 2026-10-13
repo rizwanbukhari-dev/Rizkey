@@ -3,8 +3,6 @@ import confetti from 'canvas-confetti';
 import { TestResult, LessonProgress, Achievement, StageProgress, StageExamResult } from '../types/typing';
 import { storage, StreakData } from '../utils/storage';
 import { ALL_ACHIEVEMENTS, evaluateAchievements } from '../data/achievements';
-import { authService, isSupabaseConfigured } from '../services/supabase';
-import { User } from '@supabase/supabase-js';
 
 interface ProgressContextType {
   results: TestResult[];
@@ -16,7 +14,6 @@ interface ProgressContextType {
   weakKeys: Record<string, number>;
   dailyActivities: Record<string, { count: number; practiceSeconds: number }>;
   gameScores: Record<string, number>;
-  currentUser: User | null;
   bestWpm: number;
   averageWpm: number;
   averageAccuracy: number;
@@ -30,7 +27,6 @@ interface ProgressContextType {
   deleteTestResult: (id: string) => void;
   reloadAllData: () => void;
   clearAllHistory: () => void;
-  syncWithCloud: () => Promise<boolean>;
   triggerConfetti: () => void;
 }
 
@@ -45,14 +41,6 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [weakKeys, setWeakKeys] = useState<Record<string, number>>(() => storage.getWeakKeys());
   const [dailyActivities, setDailyActivities] = useState<Record<string, { count: number; practiceSeconds: number }>>(() => storage.getDailyActivities());
   const [gameScores, setGameScores] = useState<Record<string, number>>(() => storage.getGameScores());
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-
-  // Load auth state if Supabase configured
-  useEffect(() => {
-    if (isSupabaseConfigured()) {
-      authService.getCurrentUser().then(user => setCurrentUser(user));
-    }
-  }, []);
 
   const triggerConfetti = useCallback(() => {
     try {
@@ -215,19 +203,6 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return stageProgress[stageNumber - 1]?.examPassed === true;
   }, [stageProgress]);
 
-  const syncWithCloud = useCallback(async (): Promise<boolean> => {
-    if (!currentUser || !isSupabaseConfigured()) return false;
-    const payload = {
-      settings: storage.getSettings(),
-      results: storage.getResults(),
-      lessons: storage.getLessonProgress(),
-      stageProgress: storage.getStageProgress(),
-      achievements: storage.getUnlockedAchievements(),
-      streak: storage.getStreak(),
-    };
-    return await authService.syncToCloud(currentUser.id, payload);
-  }, [currentUser]);
-
   return (
     <ProgressContext.Provider
       value={{
@@ -240,7 +215,6 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         weakKeys,
         dailyActivities,
         gameScores,
-        currentUser,
         bestWpm,
         averageWpm,
         averageAccuracy,
@@ -254,7 +228,6 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         reloadAllData,
         clearAllHistory,
         deleteTestResult,
-        syncWithCloud,
         triggerConfetti,
       }}
     >

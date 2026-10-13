@@ -8,7 +8,6 @@ import {
   Gamepad2,
   BarChart3,
   Settings,
-  User,
   Menu,
   X,
   Flame,
@@ -65,7 +64,6 @@ export const Header: React.FC = () => {
     { name: 'Custom Text', path: '/custom-text', icon: FileText },
     { name: 'Achievements', path: '/achievements', icon: Trophy },
     { name: 'Settings', path: '/settings', icon: Settings },
-    { name: 'Account & Sync', path: '/account', icon: User },
   ];
 
   return (
