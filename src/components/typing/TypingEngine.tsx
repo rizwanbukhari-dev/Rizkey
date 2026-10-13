@@ -22,6 +22,7 @@ import {
   Lock,
   Clock,
   AlignLeft,
+  Keyboard,
 } from 'lucide-react';
 
 interface TypingEngineProps {
@@ -79,11 +80,30 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const timelineRef = useRef<TimelinePoint[]>([]);
   const lastTimelineSecondRef = useRef(0);
 
+  // Synchronized state refs for mobile IMEs and multi-character inputs
+  const currentTypedRef = useRef('');
+  const wordIndexRef = useRef(0);
+  const typedHistoryRef = useRef<string[]>([]);
+  const touchStartYRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    currentTypedRef.current = currentTyped;
+  }, [currentTyped]);
+
+  useEffect(() => {
+    wordIndexRef.current = wordIndex;
+  }, [wordIndex]);
+
+  useEffect(() => {
+    typedHistoryRef.current = typedHistory;
+  }, [typedHistory]);
+
   // DOM elements
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const tickerRef = useRef<number | null>(null);
+  const lastKeyDownHandledRef = useRef<boolean>(false);
 
   // Helper: compute current net correct characters
   const getNetCorrectChars = useCallback(
@@ -124,8 +144,11 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   // Reset all state when test text or mode changes
   useEffect(() => {
     setWordIndex(0);
+    wordIndexRef.current = 0;
     setTypedHistory([]);
+    typedHistoryRef.current = [];
     setCurrentTyped('');
+    currentTypedRef.current = '';
     setIsStarted(false);
     setIsPaused(false);
     setIsFinished(false);
@@ -333,7 +356,150 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     }
   };
 
-  // Keystroke handler
+  // Process a single character (letter, number, symbol, punctuation, space)
+  const handleCharacterInput = useCallback(
+    (char: string) => {
+      if (isFinished || isPaused) return;
+      startTestIfNeeded();
+
+      const curWordIdx = wordIndexRef.current;
+      const curTyped = currentTypedRef.current;
+      const curHistory = typedHistoryRef.current;
+      const currentTargetWord = targetWords[curWordIdx] || '';
+
+      // Space: submit active word and advance
+      if (char === ' ') {
+        if (curTyped.length === 0) return; // Prevent multiple empty spaces
+
+        totalKeystrokesRef.current++;
+        const isWordFullyCorrect = curTyped === currentTargetWord;
+        if (isWordFullyCorrect) {
+          correctKeystrokesRef.current++;
+          soundEngine.playKey(settings.soundTheme, settings.soundVolume);
+        } else {
+          errorKeystrokesRef.current++;
+          if (settings.playErrorSound) {
+            soundEngine.playError(settings.soundVolume);
+          } else {
+            soundEngine.playKey(settings.soundTheme, settings.soundVolume);
+          }
+        }
+
+        const nextHistory = [...curHistory, curTyped];
+        typedHistoryRef.current = nextHistory;
+        setTypedHistory(nextHistory);
+
+        currentTypedRef.current = '';
+        setCurrentTyped('');
+
+        const nextWordIdx = curWordIdx + 1;
+        wordIndexRef.current = nextWordIdx;
+        setWordIndex(nextWordIdx);
+
+        setLastKeystrokeError(false);
+
+        checkWordsCompletion(nextHistory);
+        return;
+      }
+
+      // Single printable character
+      totalKeystrokesRef.current++;
+      const expectedChar = currentTargetWord[curTyped.length];
+      const isCorrect = expectedChar === char;
+
+      if (isCorrect) {
+        correctKeystrokesRef.current++;
+        soundEngine.playKey(settings.soundTheme, settings.soundVolume);
+        setLastKeystrokeError(false);
+      } else {
+        errorKeystrokesRef.current++;
+        if (settings.playErrorSound) {
+          soundEngine.playError(settings.soundVolume);
+        } else {
+          soundEngine.playKey(settings.soundTheme, settings.soundVolume);
+        }
+        setLastKeystrokeError(true);
+
+        if (expectedChar) {
+          mistakesRef.current[expectedChar] = (mistakesRef.current[expectedChar] || 0) + 1;
+        }
+      }
+
+      const nextTyped = curTyped + char;
+      currentTypedRef.current = nextTyped;
+      setCurrentTyped(nextTyped);
+
+      // Check if last word finished
+      const isLastWord =
+        curWordIdx === targetWords.length - 1 ||
+        (mode === 'words' && curWordIdx === wordLimit - 1);
+
+      if (isLastWord && nextTyped === currentTargetWord) {
+        const nextHistory = [...curHistory, nextTyped];
+        typedHistoryRef.current = nextHistory;
+        setTypedHistory(nextHistory);
+
+        currentTypedRef.current = '';
+        setCurrentTyped('');
+
+        checkWordsCompletion(nextHistory);
+      }
+    },
+    [
+      isFinished,
+      isPaused,
+      targetWords,
+      settings.soundTheme,
+      settings.soundVolume,
+      settings.playErrorSound,
+      mode,
+      wordLimit,
+    ]
+  );
+
+  // Process backspace (single character or whole word)
+  const handleBackspace = useCallback(
+    (isWordDelete = false) => {
+      if (isFinished || isPaused) return;
+
+      const curTyped = currentTypedRef.current;
+      const curWordIdx = wordIndexRef.current;
+      const curHistory = typedHistoryRef.current;
+
+      if (isWordDelete) {
+        currentTypedRef.current = '';
+        setCurrentTyped('');
+        setLastKeystrokeError(false);
+        return;
+      }
+
+      if (curTyped.length > 0) {
+        const nextTyped = curTyped.slice(0, -1);
+        currentTypedRef.current = nextTyped;
+        setCurrentTyped(nextTyped);
+        setLastKeystrokeError(false);
+      } else if (curWordIdx > 0) {
+        // Jump back to previous word if it had mistakes
+        const prevTyped = curHistory[curWordIdx - 1];
+        const prevTarget = targetWords[curWordIdx - 1];
+        if (prevTyped !== prevTarget) {
+          const prevWordIdx = curWordIdx - 1;
+          wordIndexRef.current = prevWordIdx;
+          setWordIndex(prevWordIdx);
+
+          currentTypedRef.current = prevTyped;
+          setCurrentTyped(prevTyped);
+
+          const nextHistory = curHistory.slice(0, -1);
+          typedHistoryRef.current = nextHistory;
+          setTypedHistory(nextHistory);
+        }
+      }
+    },
+    [isFinished, isPaused, targetWords]
+  );
+
+  // Desktop keyboard event handler (physical keyboard shortcuts & 0ms latency typing)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // Check Caps Lock state
     setCapsLockActive(e.getModifierState('CapsLock'));
@@ -365,105 +531,68 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
     if (isFinished) return;
 
-    const currentTargetWord = targetWords[wordIndex] || '';
-
-    // Handle Ctrl + Backspace or Alt + Backspace: delete entire current word
-    if (e.key === 'Backspace' && (e.ctrlKey || e.altKey)) {
-      e.preventDefault();
-      setCurrentTyped('');
-      setLastKeystrokeError(false);
-      return;
-    }
-
-    // Handle regular Backspace
+    // Handle Backspace on physical desktop keyboard
     if (e.key === 'Backspace') {
-      if (currentTyped.length > 0) {
-        setCurrentTyped((prev) => prev.slice(0, -1));
-        setLastKeystrokeError(false);
-      } else if (wordIndex > 0) {
-        // Jump back to previous word if it had mistakes
-        const prevTyped = typedHistory[wordIndex - 1];
-        const prevTarget = targetWords[wordIndex - 1];
-        if (prevTyped !== prevTarget) {
-          setWordIndex((prev) => prev - 1);
-          setCurrentTyped(prevTyped);
-          setTypedHistory((prev) => prev.slice(0, -1));
-        }
-      }
+      e.preventDefault();
+      lastKeyDownHandledRef.current = true;
+      handleBackspace(e.ctrlKey || e.altKey);
       return;
     }
 
-    // Handle Space: submit active word and advance
+    // Handle Space on physical desktop keyboard
     if (e.key === ' ') {
       e.preventDefault();
-      if (currentTyped.length === 0) return; // Prevent multiple empty spaces
-
-      startTestIfNeeded();
-
-      totalKeystrokesRef.current++;
-      const isWordFullyCorrect = currentTyped === currentTargetWord;
-      if (isWordFullyCorrect) {
-        correctKeystrokesRef.current++;
-        soundEngine.playKey(settings.soundTheme, settings.soundVolume);
-      } else {
-        errorKeystrokesRef.current++;
-        if (settings.playErrorSound) {
-          soundEngine.playError(settings.soundVolume);
-        } else {
-          soundEngine.playKey(settings.soundTheme, settings.soundVolume);
-        }
-      }
-
-      const nextHistory = [...typedHistory, currentTyped];
-      setTypedHistory(nextHistory);
-      setCurrentTyped('');
-      setWordIndex((prev) => prev + 1);
-      setLastKeystrokeError(false);
-
-      checkWordsCompletion(nextHistory);
+      lastKeyDownHandledRef.current = true;
+      handleCharacterInput(' ');
       return;
     }
 
-    // Handle single printable characters
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      startTestIfNeeded();
+    // Handle single printable characters on physical desktop keyboard
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== 'Unidentified') {
+      e.preventDefault();
+      lastKeyDownHandledRef.current = true;
+      handleCharacterInput(e.key);
+      return;
+    }
 
-      totalKeystrokesRef.current++;
-      const expectedChar = currentTargetWord[currentTyped.length];
-      const isCorrect = expectedChar === e.key;
+    // Touch / Mobile virtual keyboards (where e.key === 'Unidentified' or keyCode === 229)
+    if (e.key === 'Unidentified' || e.keyCode === 229) {
+      lastKeyDownHandledRef.current = false;
+    }
+  };
 
-      if (isCorrect) {
-        correctKeystrokesRef.current++;
-        soundEngine.playKey(settings.soundTheme, settings.soundVolume);
-        setLastKeystrokeError(false);
-      } else {
-        errorKeystrokesRef.current++;
-        if (settings.playErrorSound) {
-          soundEngine.playError(settings.soundVolume);
-        } else {
-          soundEngine.playKey(settings.soundTheme, settings.soundVolume);
-        }
-        setLastKeystrokeError(true);
+  // Mobile virtual keyboard & touch input handler (Android Gboard, iPhone, Samsung keyboard)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // If handled by keydown on desktop, prevent double-counting
+    if (lastKeyDownHandledRef.current) {
+      lastKeyDownHandledRef.current = false;
+      return;
+    }
 
-        if (expectedChar) {
-          mistakesRef.current[expectedChar] = (mistakesRef.current[expectedChar] || 0) + 1;
-        }
-      }
+    const newVal = e.target.value;
+    const prevVal = currentTypedRef.current;
+    if (newVal === prevVal) return;
 
-      const nextTyped = currentTyped + e.key;
-      setCurrentTyped(nextTyped);
+    // Find common prefix between previous state and new input
+    let commonLen = 0;
+    while (
+      commonLen < prevVal.length &&
+      commonLen < newVal.length &&
+      prevVal[commonLen] === newVal[commonLen]
+    ) {
+      commonLen++;
+    }
 
-      // Check if last word finished
-      const isLastWord =
-        wordIndex === targetWords.length - 1 ||
-        (mode === 'words' && wordIndex === wordLimit - 1);
+    // Backspaces needed if user deleted characters via mobile keyboard
+    const backspacesNeeded = prevVal.length - commonLen;
+    for (let i = 0; i < backspacesNeeded; i++) {
+      handleBackspace(false);
+    }
 
-      if (isLastWord && nextTyped === currentTargetWord) {
-        const nextHistory = [...typedHistory, nextTyped];
-        setTypedHistory(nextHistory);
-        setCurrentTyped('');
-        checkWordsCompletion(nextHistory);
-      }
+    // Characters added by mobile keyboard
+    const addedChars = newVal.slice(commonLen);
+    for (let i = 0; i < addedChars.length; i++) {
+      handleCharacterInput(addedChars[i]);
     }
   };
 
@@ -526,21 +655,6 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       className={`w-full ${maxWidthClass} mx-auto flex flex-col items-center select-none relative`}
       onClick={() => inputRef.current?.focus()}
     >
-      {/* Invisible auto-focused input field */}
-      <input
-        ref={inputRef}
-        type="text"
-        autoCapitalize="none"
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck="false"
-        className="opacity-0 fixed -top-96 left-0 pointer-events-none"
-        onKeyDown={handleKeyDown}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        aria-label="Typing test input field"
-      />
-
       {/* Live Statistics & Controls Header (HUD) */}
       <div className="w-full flex items-center justify-between py-3 px-4 sm:px-6 mb-5 text-xs font-mono text-[#989A92] border-b border-[#353630]/70">
         <div className="flex items-center gap-6 sm:gap-8">
@@ -574,6 +688,22 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
         {/* Right: Timer / Word progress & Action buttons */}
         <div className="flex items-center gap-3 sm:gap-4">
+          {/* Mobile Start Typing Button for fast, clear touch keyboard invocation */}
+          {!isStarted && !isFinished && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                inputRef.current?.focus();
+              }}
+              className="sm:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[var(--accent-color,#E6C76B)] text-[#181915] font-semibold text-xs shadow-xs active:scale-95 transition-transform cursor-pointer"
+              aria-label="Start typing on mobile keyboard"
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+              <span>Start Typing</span>
+            </button>
+          )}
+
           {mode === 'time' ? (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#20211D]/80 border border-[#353630]/70 font-mono text-[#ECEBE4] shadow-xs">
               <Clock className="w-3.5 h-3.5 text-[#E6C76B]" />
@@ -623,6 +753,45 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
       {/* Main Distraction-Free Text Card */}
       <div className="w-full relative rounded-2xl sm:rounded-3xl bg-[#272824]/40 dark:bg-[#1C2420]/60 border border-[#353630]/70 shadow-xl backdrop-blur-xs transition-all duration-200">
+        {/* On-screen touch-friendly and mobile-IME-compatible input overlay */}
+        <input
+          ref={inputRef}
+          type="text"
+          value={currentTyped}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          onWheel={(e) => {
+            if (containerRef.current) {
+              containerRef.current.scrollTop += e.deltaY;
+            }
+          }}
+          onTouchStart={(e) => {
+            touchStartYRef.current = e.touches[0].clientY;
+          }}
+          onTouchMove={(e) => {
+            if (touchStartYRef.current !== null && containerRef.current) {
+              const deltaY = touchStartYRef.current - e.touches[0].clientY;
+              containerRef.current.scrollTop += deltaY;
+              touchStartYRef.current = e.touches[0].clientY;
+            }
+          }}
+          onTouchEnd={() => {
+            touchStartYRef.current = null;
+          }}
+          disabled={isPaused || isFinished}
+          autoCapitalize="none"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck="false"
+          aria-label="Typing test input field"
+          className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-text resize-none bg-transparent"
+          style={{
+            fontSize: '16px', // Prevents iOS Safari from zooming in on focus
+            touchAction: 'manipulation', // Prevents double-tap zoom
+          }}
+        />
         <div
           ref={containerRef}
           className={`typing-text-surface w-full min-h-[200px] sm:min-h-[230px] md:min-h-[260px] max-h-[300px] sm:max-h-[340px] md:max-h-[390px] overflow-y-auto overflow-x-hidden no-scrollbar py-6 sm:py-8 md:py-10 px-5 sm:px-8 md:px-10 cursor-text font-mono tracking-wide rounded-2xl sm:rounded-3xl relative transition-all duration-200 ${
@@ -775,13 +944,20 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         {/* Focus Overlay if clicked away */}
         {!isFocused && !isPaused && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center bg-[#20211D]/80 backdrop-blur-xs rounded-2xl sm:rounded-3xl cursor-pointer z-20 animate-fadeIn"
+            className="absolute inset-0 flex flex-col items-center justify-center bg-[#20211D]/80 backdrop-blur-xs rounded-2xl sm:rounded-3xl cursor-pointer z-20 animate-fadeIn p-4"
             onClick={() => inputRef.current?.focus()}
           >
-            <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-2xl bg-[#272824] border border-[#353630] text-sm font-mono text-[#E6C76B] shadow-2xl animate-pulse">
-              <MousePointerClick className="w-4 h-4" />
-              <span>Click anywhere or press any key to focus</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.focus()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[var(--accent-color,#E6C76B)] text-[#1C2420] font-mono font-bold text-sm shadow-xl active:scale-95 transition-all hover:brightness-105 cursor-pointer"
+            >
+              <Keyboard className="w-4 h-4" />
+              <span>Tap or Click to Start Typing</span>
+            </button>
+            <span className="mt-2 text-xs text-[#989A92] font-mono">
+              Touch anywhere or press any key to open keyboard
+            </span>
           </div>
         )}
       </div>
