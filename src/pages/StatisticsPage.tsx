@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useProgress } from '../context/ProgressContext';
 import { useToast } from '../context/ToastContext';
 import { formatDuration, formatDate, formatDateTime } from '../utils/metrics';
+import { TestResult } from '../types/typing';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import {
   BarChart3,
@@ -17,10 +17,8 @@ import {
   BookOpen,
   AlertTriangle,
   Play,
-  Calendar,
   CheckCircle2,
   Trash2,
-  RotateCcw,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,6 +33,14 @@ import {
 } from 'recharts';
 
 type TimeRange = '7d' | '30d' | 'all';
+
+function filterResultsByTimeRange(results: TestResult[], timeRange: TimeRange): TestResult[] {
+  if (timeRange === 'all') return results;
+  const now = Date.now();
+  const days = timeRange === '7d' ? 7 : 30;
+  const cutoff = now - days * 24 * 60 * 60 * 1000;
+  return results.filter((r) => r.timestamp >= cutoff);
+}
 
 export const StatisticsPage: React.FC = () => {
   const {
@@ -63,11 +69,7 @@ export const StatisticsPage: React.FC = () => {
 
   // Filter results by range
   const filteredResults = useMemo(() => {
-    if (timeRange === 'all') return results;
-    const now = Date.now();
-    const days = timeRange === '7d' ? 7 : 30;
-    const cutoff = now - days * 24 * 60 * 60 * 1000;
-    return results.filter((r) => r.timestamp >= cutoff);
+    return filterResultsByTimeRange(results, timeRange);
   }, [results, timeRange]);
 
   // Chart data points in chronological order

@@ -17,12 +17,9 @@ import {
   Sparkles,
   Info,
   Check,
-  Zap,
   Lock,
   Trophy,
   AlertTriangle,
-  Play,
-  HelpCircle,
 } from 'lucide-react';
 
 export const LearnPage: React.FC = () => {
@@ -646,7 +643,7 @@ export const LearnPage: React.FC = () => {
                   Curriculum Milestones
                 </span>
                 <div className="text-xl font-bold font-mono text-[#ECEBE4] mt-0.5">
-                  {completedStagesCount} of {STAGES.length} Stages Completed ({completedLessonsCount} / {totalLessons} Lessons)
+                  {completedStagesCount} of {STAGES.length} Stages Completed ({completedLessonsCount} / {totalLessons} Lessons &bull; {progressPercent}%)
                 </div>
               </div>
 
@@ -741,8 +738,8 @@ export const LearnPage: React.FC = () => {
                             </Badge>
                           )}
                           {isUnlocked && !isExamPassed && !isExamFailed && (
-                            <Badge variant="amber" size="xs">
-                              In Progress
+                            <Badge variant={allLessonsDone ? 'green' : 'amber'} size="xs">
+                              {allLessonsDone ? 'Ready for Exam' : 'In Progress'}
                             </Badge>
                           )}
                         </div>

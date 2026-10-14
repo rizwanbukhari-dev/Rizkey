@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ALL_ACHIEVEMENTS, evaluateAchievements } from '../data/achievements';
-import { TestResult, LessonProgress } from '../types/typing';
+import { TestResult } from '../types/typing';
 
 describe('Achievements Evaluation System', () => {
   it('has valid registered achievements', () => {

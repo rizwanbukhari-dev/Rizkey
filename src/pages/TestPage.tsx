@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   TestMode,
   TimeLimit,
@@ -18,6 +18,39 @@ import {
   getRandomParagraph,
 } from '../data/wordLists';
 
+function createTestText(
+  mode: TestMode,
+  timeLimit: TimeLimit,
+  wordLimit: WordLimit,
+  difficulty: Difficulty,
+  includePunctuation: boolean,
+  includeNumbers: boolean
+): string {
+  if (mode === 'time') {
+    const count = Math.max(100, timeLimit * 4);
+    return generateWords({
+      count,
+      punctuation: includePunctuation,
+      numbers: includeNumbers,
+      difficulty,
+    });
+  } else if (mode === 'words') {
+    return generateWords({
+      count: wordLimit,
+      punctuation: includePunctuation,
+      numbers: includeNumbers,
+      difficulty,
+    });
+  } else if (mode === 'quote') {
+    return getRandomQuote().text;
+  } else if (mode === 'sentences') {
+    return getRandomSentence();
+  } else if (mode === 'paragraphs') {
+    return getRandomParagraph();
+  }
+  return generateWords({ count: 25, difficulty });
+}
+
 export const TestPage: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const { addTestResult } = useProgress();
@@ -29,49 +62,36 @@ export const TestPage: React.FC = () => {
   const [includePunctuation, setIncludePunctuation] = useState<boolean>(settings.includePunctuation);
   const [includeNumbers, setIncludeNumbers] = useState<boolean>(settings.includeNumbers);
 
-  const [testText, setTestText] = useState<string>('');
+  const [testText, setTestText] = useState<string>(() =>
+    createTestText(
+      settings.defaultMode,
+      settings.defaultTimeLimit,
+      settings.defaultWordLimit,
+      settings.difficulty,
+      settings.includePunctuation,
+      settings.includeNumbers
+    )
+  );
   const [activeResult, setActiveResult] = useState<TestResult | null>(null);
   const [keyCounter, setKeyCounter] = useState(0);
 
-  // Generate appropriate test text based on current options
-  const generateNewText = useCallback(() => {
-    let text = '';
-    if (mode === 'time') {
-      // Generate plenty of words so user never runs out during the timer
-      const count = Math.max(100, timeLimit * 4);
-      text = generateWords({
-        count,
-        punctuation: includePunctuation,
-        numbers: includeNumbers,
-        difficulty,
-      });
-    } else if (mode === 'words') {
-      text = generateWords({
-        count: wordLimit,
-        punctuation: includePunctuation,
-        numbers: includeNumbers,
-        difficulty,
-      });
-    } else if (mode === 'quote') {
-      const q = getRandomQuote();
-      text = q.text;
-    } else if (mode === 'sentences') {
-      text = getRandomSentence();
-    } else if (mode === 'paragraphs') {
-      text = getRandomParagraph();
-    } else {
-      text = generateWords({ count: 25, difficulty });
-    }
-
-    setTestText(text);
-    setActiveResult(null);
-    setKeyCounter((prev) => prev + 1);
-  }, [mode, timeLimit, wordLimit, difficulty, includePunctuation, includeNumbers]);
-
-  // Initial load
-  useEffect(() => {
-    generateNewText();
-  }, [generateNewText]);
+  // Generate appropriate test text based on current or new options
+  const generateNewText = useCallback(
+    (
+      newMode = mode,
+      newTime = timeLimit,
+      newWord = wordLimit,
+      newDiff = difficulty,
+      newPunc = includePunctuation,
+      newNum = includeNumbers
+    ) => {
+      const text = createTestText(newMode, newTime, newWord, newDiff, newPunc, newNum);
+      setTestText(text);
+      setActiveResult(null);
+      setKeyCounter((prev) => prev + 1);
+    },
+    [mode, timeLimit, wordLimit, difficulty, includePunctuation, includeNumbers]
+  );
 
   // Handle completion
   const handleTestComplete = (rawResult: Omit<TestResult, 'isPersonalBest'>) => {
@@ -103,28 +123,34 @@ export const TestPage: React.FC = () => {
             onModeChange={(m) => {
               setMode(m);
               updateSettings({ defaultMode: m });
+              generateNewText(m, timeLimit, wordLimit, difficulty, includePunctuation, includeNumbers);
             }}
             onTimeLimitChange={(t) => {
               setTimeLimit(t);
               updateSettings({ defaultTimeLimit: t });
+              generateNewText(mode, t, wordLimit, difficulty, includePunctuation, includeNumbers);
             }}
             onWordLimitChange={(w) => {
               setWordLimit(w);
               updateSettings({ defaultWordLimit: w });
+              generateNewText(mode, timeLimit, w, difficulty, includePunctuation, includeNumbers);
             }}
             onDifficultyChange={(d) => {
               setDifficulty(d);
               updateSettings({ difficulty: d });
+              generateNewText(mode, timeLimit, wordLimit, d, includePunctuation, includeNumbers);
             }}
             onTogglePunctuation={() => {
               const val = !includePunctuation;
               setIncludePunctuation(val);
               updateSettings({ includePunctuation: val });
+              generateNewText(mode, timeLimit, wordLimit, difficulty, val, includeNumbers);
             }}
             onToggleNumbers={() => {
               const val = !includeNumbers;
               setIncludeNumbers(val);
               updateSettings({ includeNumbers: val });
+              generateNewText(mode, timeLimit, wordLimit, difficulty, includePunctuation, val);
             }}
           />
         </div>

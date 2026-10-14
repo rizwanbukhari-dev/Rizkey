@@ -14,7 +14,6 @@ import {
   Trophy,
   RotateCcw,
   Play,
-  Pause,
   Heart,
   Flame,
   Volume2,

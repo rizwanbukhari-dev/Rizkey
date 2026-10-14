@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useProgress } from '../context/ProgressContext';
 import { useToast } from '../context/ToastContext';
 import { TypingEngine } from '../components/typing/TypingEngine';
@@ -17,7 +17,6 @@ import {
   RotateCcw,
   CheckCircle2,
   TrendingUp,
-  AlertTriangle,
 } from 'lucide-react';
 
 type TrainerModule = 'weak-keys' | 'home-row' | 'digraphs' | 'rhythm' | 'symbols';
@@ -48,13 +47,49 @@ const SYMBOL_DRILLS = [
   'for (let i = 0; i < len; i++) { items[i] = (v * 2); }; return items;',
 ];
 
+function buildTrainerDrill(
+  module: TrainerModule,
+  wordTarget: number,
+  targetKeys: string[]
+): string {
+  switch (module) {
+    case 'weak-keys': {
+      const keys = targetKeys.length > 0 ? targetKeys : ['q', 'z', 'p', 'b', 'x'];
+      return generateWeakKeyWords(keys, wordTarget);
+    }
+    case 'home-row': {
+      const pool = [...HOME_ROW_DRILLS];
+      const selected = pool[Math.floor(Math.random() * pool.length)];
+      const words = selected.split(' ');
+      const repeated: string[] = [];
+      while (repeated.length < wordTarget) {
+        repeated.push(words[repeated.length % words.length]);
+      }
+      return repeated.join(' ');
+    }
+    case 'digraphs': {
+      const shuffled = [...COMMON_DIGRAPHS].sort(() => 0.5 - Math.random());
+      const combined = shuffled.join(' ').split(' ');
+      return combined.slice(0, wordTarget).join(' ');
+    }
+    case 'rhythm': {
+      return generateWords({ count: wordTarget, difficulty: 'beginner' });
+    }
+    case 'symbols': {
+      const pool = [...SYMBOL_DRILLS];
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+    default:
+      return generateWords({ count: wordTarget });
+  }
+}
+
 export const SmartTrainerPage: React.FC = () => {
-  const { weakKeys, results, averageAccuracy, averageWpm, totalTests, addTestResult } = useProgress();
+  const { weakKeys, averageAccuracy, averageWpm, totalTests, addTestResult } = useProgress();
   const { toast } = useToast();
 
   const [activeModule, setActiveModule] = useState<TrainerModule>('weak-keys');
   const [drillLength, setDrillLength] = useState<15 | 30 | 50>(30);
-  const [currentText, setCurrentText] = useState('');
   const [activeResult, setActiveResult] = useState<TestResult | null>(null);
   const [engineKey, setEngineKey] = useState(0);
 
@@ -66,59 +101,25 @@ export const SmartTrainerPage: React.FC = () => {
       .slice(0, 8);
   }, [weakKeys]);
 
+  const [currentText, setCurrentText] = useState<string>(() =>
+    buildTrainerDrill(
+      'weak-keys',
+      30,
+      Object.keys(weakKeys).slice(0, 8)
+    )
+  );
+
   // Generate drill text based on module
-  const generateDrill = () => {
-    let text = '';
-    const wordTarget = drillLength;
-
-    switch (activeModule) {
-      case 'weak-keys': {
-        const targetKeys = sortedWeakKeys.length > 0
-          ? sortedWeakKeys.map((w) => w.key)
-          : ['q', 'z', 'p', 'b', 'x'];
-        text = generateWeakKeyWords(targetKeys, wordTarget);
-        break;
-      }
-      case 'home-row': {
-        const pool = [...HOME_ROW_DRILLS];
-        const selected = pool[Math.floor(Math.random() * pool.length)];
-        const words = selected.split(' ');
-        const repeated: string[] = [];
-        while (repeated.length < wordTarget) {
-          repeated.push(words[repeated.length % words.length]);
-        }
-        text = repeated.join(' ');
-        break;
-      }
-      case 'digraphs': {
-        const shuffled = [...COMMON_DIGRAPHS].sort(() => 0.5 - Math.random());
-        const combined = shuffled.join(' ').split(' ');
-        text = combined.slice(0, wordTarget).join(' ');
-        break;
-      }
-      case 'rhythm': {
-        // High frequency rhythmic words with balanced syllables
-        text = generateWords({ count: wordTarget, difficulty: 'beginner' });
-        break;
-      }
-      case 'symbols': {
-        const pool = [...SYMBOL_DRILLS];
-        const selected = pool[Math.floor(Math.random() * pool.length)];
-        text = selected;
-        break;
-      }
-      default:
-        text = generateWords({ count: wordTarget });
-    }
-
-    setCurrentText(text);
-    setActiveResult(null);
-    setEngineKey((k) => k + 1);
-  };
-
-  useEffect(() => {
-    generateDrill();
-  }, [activeModule, drillLength]);
+  const generateDrill = useCallback(
+    (overrideModule = activeModule, overrideLength = drillLength) => {
+      const targetKeys = sortedWeakKeys.map((w) => w.key);
+      const text = buildTrainerDrill(overrideModule, overrideLength, targetKeys);
+      setCurrentText(text);
+      setActiveResult(null);
+      setEngineKey((k) => k + 1);
+    },
+    [activeModule, drillLength, sortedWeakKeys]
+  );
 
   const handleTestComplete = (rawResult: Omit<TestResult, 'isPersonalBest'>) => {
     const { result, isPersonalBest } = addTestResult(rawResult);
@@ -284,7 +285,10 @@ export const SmartTrainerPage: React.FC = () => {
             return (
               <button
                 key={m.id}
-                onClick={() => setActiveModule(m.id)}
+                onClick={() => {
+                  setActiveModule(m.id);
+                  generateDrill(m.id, drillLength);
+                }}
                 className={`p-4 rounded-2xl text-left transition-all duration-150 border flex flex-col justify-between ${
                   isSelected
                     ? 'bg-[#272824] border-[#E6C76B] shadow-sm'
@@ -324,7 +328,10 @@ export const SmartTrainerPage: React.FC = () => {
           {([15, 30, 50] as const).map((len) => (
             <button
               key={len}
-              onClick={() => setDrillLength(len)}
+              onClick={() => {
+                setDrillLength(len);
+                generateDrill(activeModule, len);
+              }}
               className={`px-2.5 py-1 rounded-lg transition-colors ${
                 drillLength === len
                   ? 'bg-[#20211D] text-[#E6C76B] font-bold border border-[#353630]'
@@ -339,7 +346,7 @@ export const SmartTrainerPage: React.FC = () => {
         <Button
           variant="secondary"
           size="sm"
-          onClick={generateDrill}
+          onClick={() => generateDrill(activeModule, drillLength)}
           leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
         >
           Regenerate Drill

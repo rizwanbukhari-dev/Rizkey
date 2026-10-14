@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useProgress } from '../context/ProgressContext';
 import { useToast } from '../context/ToastContext';
 import { TypingEngine } from '../components/typing/TypingEngine';
@@ -146,24 +146,24 @@ export const DeveloperLabPage: React.FC = () => {
 
   const [language, setLanguage] = useState<DevLanguage>('typescript');
   const [snippetIndex, setSnippetIndex] = useState(0);
-  const [currentText, setCurrentText] = useState('');
   const [activeResult, setActiveResult] = useState<TestResult | null>(null);
-  const [engineKey, setEngineKey] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
   const [copied, setCopied] = useState(false);
 
   const currentPool = SNIPPETS[language] || SNIPPETS.typescript;
-  const currentSnippet = currentPool[snippetIndex % currentPool.length];
-
-  useEffect(() => {
-    if (currentSnippet) {
-      setCurrentText(currentSnippet.code);
-      setActiveResult(null);
-      setEngineKey((k) => k + 1);
-    }
-  }, [language, snippetIndex]);
+  const currentSnippet = currentPool[snippetIndex % currentPool.length] || currentPool[0];
+  const currentText = currentSnippet.code;
+  const engineKey = `${language}-${snippetIndex}-${retryCount}`;
 
   const handleNextSnippet = () => {
+    setActiveResult(null);
     setSnippetIndex((i) => (i + 1) % currentPool.length);
+  };
+
+  const handleSelectLanguage = (newLang: DevLanguage) => {
+    setLanguage(newLang);
+    setSnippetIndex(0);
+    setActiveResult(null);
   };
 
   const handleCopyCode = async () => {
@@ -228,10 +228,7 @@ export const DeveloperLabPage: React.FC = () => {
           return (
             <button
               key={l.id}
-              onClick={() => {
-                setLanguage(l.id);
-                setSnippetIndex(0);
-              }}
+              onClick={() => handleSelectLanguage(l.id)}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-mono transition-all duration-150 ${
                 isActive
                   ? 'bg-[#E6C76B] text-[#20211D] font-bold shadow-xs'
@@ -284,7 +281,7 @@ export const DeveloperLabPage: React.FC = () => {
               result={activeResult}
               onRetry={() => {
                 setActiveResult(null);
-                setEngineKey((k) => k + 1);
+                setRetryCount((c) => c + 1);
               }}
               onNextTest={handleNextSnippet}
             />
@@ -296,7 +293,7 @@ export const DeveloperLabPage: React.FC = () => {
               onComplete={handleTestComplete}
               onRestart={() => {
                 setActiveResult(null);
-                setEngineKey((k) => k + 1);
+                setRetryCount((c) => c + 1);
               }}
             />
           )}

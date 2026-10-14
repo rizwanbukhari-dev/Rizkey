@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   RotateCcw,
@@ -9,7 +9,6 @@ import {
   Clock,
   Sparkles,
   AlertTriangle,
-  Zap,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -45,6 +44,18 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
     mistakes,
     isPersonalBest,
   } = result;
+
+  // Keyboard shortcut listener for Tab -> Next test
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        onNextTest();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onNextTest]);
 
   const consistency = calculateConsistency(timeline.map((t) => t.wpm));
 

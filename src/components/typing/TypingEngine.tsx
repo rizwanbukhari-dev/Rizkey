@@ -18,7 +18,6 @@ import {
   RotateCcw,
   Pause,
   Play,
-  MousePointerClick,
   Lock,
   Clock,
   AlignLeft,
@@ -111,6 +110,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const getNetCorrectChars = useCallback(
     (history: string[], currentVal: string, curWordIdx: number): number => {
       let correct = 0;
+      const effectiveTotalWords = mode === 'words' ? (wordLimit as number) : targetWords.length;
 
       // Completed words
       for (let i = 0; i < history.length; i++) {
@@ -119,7 +119,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
         if (typed === target) {
           // Entire word matched + trailing space (except trailing space after last word of test)
-          correct += target.length + (i < targetWords.length - 1 ? 1 : 0);
+          correct += target.length + (i < effectiveTotalWords - 1 ? 1 : 0);
         } else {
           // Count exact character matches in imperfect word
           for (let c = 0; c < Math.min(typed.length, target.length); c++) {
@@ -131,16 +131,18 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       }
 
       // Currently typing word
-      const currentTarget = targetWords[curWordIdx] || '';
-      for (let c = 0; c < Math.min(currentVal.length, currentTarget.length); c++) {
-        if (currentVal[c] === currentTarget[c]) {
-          correct++;
+      if (curWordIdx < effectiveTotalWords) {
+        const currentTarget = targetWords[curWordIdx] || '';
+        for (let c = 0; c < Math.min(currentVal.length, currentTarget.length); c++) {
+          if (currentVal[c] === currentTarget[c]) {
+            correct++;
+          }
         }
       }
 
       return correct;
     },
-    [targetWords]
+    [targetWords, mode, wordLimit]
   );
 
   // Comprehensive reset: clears all timers, intervals, counters, and restores clean initial state
@@ -186,8 +188,13 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     inputRef.current?.focus();
   }, [timeLimit]);
 
-  // Reset all state when test text or mode parameters change
+  const isFirstMountRef = useRef(true);
+  // Reset all state when test text or mode parameters change after mount
   useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return;
+    }
     resetEngine();
   }, [initialText, timeLimit, wordLimit, mode, resetEngine]);
 
@@ -260,12 +267,20 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       const finalAccuracy = calculateAccuracy(correctKeys, totalKeys);
 
       let missedChars = 0;
-      const currentTarget = targetWords[curWordIdx] || '';
-      if (curTyped.length < currentTarget.length) {
-        missedChars += currentTarget.length - curTyped.length;
+      const effectiveTotalWords = mode === 'words' ? (wordLimit as number) : targetWords.length;
+
+      // Missed characters in completed words (if user skipped characters before submitting word)
+      for (let i = 0; i < curHistory.length; i++) {
+        const target = targetWords[i] || '';
+        const typed = curHistory[i] || '';
+        if (typed.length < target.length) {
+          missedChars += target.length - typed.length;
+        }
       }
-      for (let i = curWordIdx + 1; i < targetWords.length; i++) {
-        missedChars += (targetWords[i] ? targetWords[i].length + 1 : 0);
+
+      // If test ended by timer while actively typing a word
+      if (curWordIdx < effectiveTotalWords && curTyped.length < (targetWords[curWordIdx]?.length || 0)) {
+        missedChars += (targetWords[curWordIdx]?.length || 0) - curTyped.length;
       }
 
       const charStats: CharStats = {
@@ -414,27 +429,30 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   }, [isStarted, isFinished, isPaused, mode, timeLimit, getNetCorrectChars]);
 
   // Start timer on first meaningful keystroke
-  const startTestIfNeeded = () => {
+  const startTestIfNeeded = useCallback(() => {
     if (!isStarted && !isFinished) {
       startTimeRef.current = performance.now();
       setIsStarted(true);
     }
-  };
+  }, [isStarted, isFinished]);
 
   // Check if word-count/quote test completed
-  const checkWordsCompletion = (newHistory: string[]) => {
-    const totalDoneWords = newHistory.length;
-    const isWordsModeDone = mode === 'words' && totalDoneWords >= wordLimit;
-    const isTextEndDone = mode !== 'time' && totalDoneWords >= targetWords.length;
+  const checkWordsCompletion = useCallback(
+    (newHistory: string[]) => {
+      const totalDoneWords = newHistory.length;
+      const isWordsModeDone = mode === 'words' && totalDoneWords >= (wordLimit as number);
+      const isTextEndDone = mode !== 'time' && totalDoneWords >= targetWords.length;
 
-    if (isWordsModeDone || isTextEndDone) {
-      const now = performance.now();
-      const grossElapsedMs = startTimeRef.current
-        ? now - startTimeRef.current - totalPausedDurationRef.current
-        : 1000;
-      finishTest(grossElapsedMs / 1000);
-    }
-  };
+      if (isWordsModeDone || isTextEndDone) {
+        const now = performance.now();
+        const grossElapsedMs = startTimeRef.current
+          ? now - startTimeRef.current - totalPausedDurationRef.current
+          : 1000;
+        finishTest(grossElapsedMs / 1000);
+      }
+    },
+    [finishTest, mode, wordLimit, targetWords.length]
+  );
 
   // Process a single character (letter, number, symbol, punctuation, space)
   const handleCharacterInput = useCallback(
@@ -527,7 +545,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       // Check if last word finished
       const isLastWord =
         curWordIdx === targetWords.length - 1 ||
-        (mode === 'words' && curWordIdx === wordLimit - 1);
+        (mode === 'words' && curWordIdx === (wordLimit as number) - 1);
 
       if (isLastWord && nextTyped === currentTargetWord) {
         const nextHistory = [...curHistory, nextTyped];
@@ -536,6 +554,10 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
         currentTypedRef.current = '';
         setCurrentTyped('');
+
+        const nextWordIdx = curWordIdx + 1;
+        wordIndexRef.current = nextWordIdx;
+        setWordIndex(nextWordIdx);
 
         checkWordsCompletion(nextHistory);
       }
@@ -550,6 +572,8 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       mode,
       wordLimit,
       updateLiveMetrics,
+      startTestIfNeeded,
+      checkWordsCompletion,
     ]
   );
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ACCENT_PRESETS, getAccentPreset } from '../data/theme';
-import { storage, DEFAULT_SETTINGS } from '../utils/storage';
+import { storage } from '../utils/storage';
 
 describe('Global Theme & Accent Colour System', () => {
   beforeEach(() => {

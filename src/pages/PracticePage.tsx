@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProgress } from '../context/ProgressContext';
 import { useToast } from '../context/ToastContext';
 import { TypingEngine } from '../components/typing/TypingEngine';
 import { ResultsView } from '../components/typing/ResultsView';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { TestResult, Difficulty } from '../types/typing';
 import {
   generateWords,
@@ -24,12 +23,23 @@ import {
   FileText,
   Code2,
   BookOpen,
-  Keyboard,
   ShieldCheck,
   Hash,
   Type,
   AlignLeft,
 } from 'lucide-react';
+
+function generateRandomLetters(count: number): string {
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const parts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const l1 = letters[Math.floor(Math.random() * letters.length)];
+    const l2 = letters[Math.floor(Math.random() * letters.length)];
+    const l3 = letters[Math.floor(Math.random() * letters.length)];
+    parts.push(`${l1}${l2}${l3}`);
+  }
+  return parts.join(' ');
+}
 
 type DrillId =
   | 'letters'
@@ -142,25 +152,21 @@ export const PracticePage: React.FC = () => {
   const activeConfig = DRILL_OPTIONS.find((d) => d.id === activeDrill);
 
   // Generate text for the chosen drill
-  const generateTextForDrill = (drillId: DrillId) => {
+  const generateTextForDrill = (
+    drillId: DrillId,
+    overrideCount = wordCount,
+    overrideDifficulty = difficulty
+  ) => {
     let text = '';
-    const count = wordCount;
+    const count = overrideCount;
 
     switch (drillId) {
       case 'letters': {
-        const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
-        const parts: string[] = [];
-        for (let i = 0; i < count; i++) {
-          const l1 = letters[Math.floor(Math.random() * letters.length)];
-          const l2 = letters[Math.floor(Math.random() * letters.length)];
-          const l3 = letters[Math.floor(Math.random() * letters.length)];
-          parts.push(`${l1}${l2}${l3}`);
-        }
-        text = parts.join(' ');
+        text = generateRandomLetters(count);
         break;
       }
       case 'words':
-        text = generateWords({ count, difficulty });
+        text = generateWords({ count, difficulty: overrideDifficulty });
         break;
       case 'sentences':
         text = Array.from({ length: Math.max(2, Math.round(count / 10)) }, () => getRandomSentence()).join(' ');
@@ -272,7 +278,7 @@ export const PracticePage: React.FC = () => {
                       key={cnt}
                       onClick={() => {
                         setWordCount(cnt);
-                        setTimeout(() => generateTextForDrill(activeDrill), 0);
+                        generateTextForDrill(activeDrill, cnt, difficulty);
                       }}
                       className={`px-2.5 py-1 rounded-lg transition-colors ${
                         wordCount === cnt
@@ -286,10 +292,32 @@ export const PracticePage: React.FC = () => {
                 </div>
               )}
 
+              {activeDrill === 'words' && (
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-[#272824] border border-[#353630] text-xs font-mono">
+                  <span className="text-[#989A92] px-2">Level:</span>
+                  {(['beginner', 'normal', 'advanced'] as const).map((lvl) => (
+                    <button
+                      key={lvl}
+                      onClick={() => {
+                        setDifficulty(lvl);
+                        generateTextForDrill('words', wordCount, lvl);
+                      }}
+                      className={`px-2 py-1 rounded-lg capitalize transition-colors ${
+                        difficulty === lvl
+                          ? 'bg-[#20211D] text-[var(--accent-color)] font-bold border border-[#353630]'
+                          : 'text-[#989A92] hover:text-[#ECEBE4]'
+                      }`}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => generateTextForDrill(activeDrill)}
+                onClick={() => generateTextForDrill(activeDrill, wordCount, difficulty)}
                 leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
               >
                 New Drill

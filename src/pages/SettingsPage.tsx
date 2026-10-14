@@ -5,13 +5,10 @@ import { useToast } from '../context/ToastContext';
 import { storage } from '../utils/storage';
 import { soundEngine } from '../utils/sound';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { ACCENT_PRESETS } from '../data/theme';
 import {
   FontFamily,
-  CaretStyle,
-  CaretAnimation,
   SoundTheme,
   TimeLimit,
   WordLimit,
@@ -29,7 +26,6 @@ import {
   RotateCcw,
   Trash2,
   Check,
-  AlertTriangle,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {

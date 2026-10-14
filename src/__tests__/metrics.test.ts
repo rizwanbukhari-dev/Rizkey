@@ -3,7 +3,10 @@ import {
   calculateWpm,
   calculateRawWpm,
   calculateAccuracy,
+  calculateConsistency,
   formatDuration,
+  formatDate,
+  formatDateTime,
 } from '../utils/metrics';
 
 describe('Metrics Calculations', () => {
@@ -26,6 +29,13 @@ describe('Metrics Calculations', () => {
       expect(calculateWpm(0, 30)).toBe(0);
       expect(calculateWpm(-10, 30)).toBe(0);
     });
+
+    it('safely guards against NaN and Infinity values', () => {
+      expect(calculateWpm(NaN, 30)).toBe(0);
+      expect(calculateWpm(100, NaN)).toBe(0);
+      expect(calculateWpm(Infinity, 30)).toBe(0);
+      expect(calculateWpm(100, Infinity)).toBe(0);
+    });
   });
 
   describe('calculateRawWpm', () => {
@@ -37,6 +47,13 @@ describe('Metrics Calculations', () => {
     it('safely handles edge cases', () => {
       expect(calculateRawWpm(0, 30)).toBe(0);
       expect(calculateRawWpm(50, 0)).toBe(0);
+    });
+
+    it('safely guards against NaN and Infinity values', () => {
+      expect(calculateRawWpm(NaN, 30)).toBe(0);
+      expect(calculateRawWpm(150, NaN)).toBe(0);
+      expect(calculateRawWpm(Infinity, 30)).toBe(0);
+      expect(calculateRawWpm(150, Infinity)).toBe(0);
     });
   });
 
@@ -58,6 +75,38 @@ describe('Metrics Calculations', () => {
     it('returns 0% if all typed characters were wrong', () => {
       expect(calculateAccuracy(0, 10)).toBe(0);
     });
+
+    it('safely guards against NaN and Infinity values', () => {
+      expect(calculateAccuracy(NaN, 100)).toBe(0);
+      expect(calculateAccuracy(50, NaN)).toBe(0);
+      expect(calculateAccuracy(Infinity, 100)).toBe(0);
+      expect(calculateAccuracy(50, Infinity)).toBe(0);
+    });
+  });
+
+  describe('calculateConsistency', () => {
+    it('returns 100 for fewer than 2 snapshots', () => {
+      expect(calculateConsistency([])).toBe(100);
+      expect(calculateConsistency([50])).toBe(100);
+    });
+
+    it('returns high consistency for stable WPM snapshots', () => {
+      const stable = [60, 61, 59, 60, 60];
+      const consistency = calculateConsistency(stable);
+      expect(consistency).toBeGreaterThan(95);
+      expect(consistency).toBeLessThanOrEqual(100);
+    });
+
+    it('returns lower consistency for erratic WPM snapshots', () => {
+      const erratic = [10, 80, 20, 95, 15];
+      const consistency = calculateConsistency(erratic);
+      expect(consistency).toBeLessThan(70);
+    });
+
+    it('safely handles non-finite numbers and zeros in snapshots', () => {
+      expect(calculateConsistency([NaN, Infinity, 0])).toBe(100);
+      expect(calculateConsistency([50, NaN, 50])).toBe(100);
+    });
   });
 
   describe('formatDuration', () => {
@@ -68,5 +117,20 @@ describe('Metrics Calculations', () => {
       expect(formatDuration(75)).toBe('1m 15s');
       expect(formatDuration(120)).toBe('2m');
     });
+
+    it('safely handles negative numbers', () => {
+      expect(formatDuration(-10)).toBe('0s');
+    });
+  });
+
+  describe('formatDate and formatDateTime', () => {
+    it('formats timestamps into valid date strings without crashing', () => {
+      const ts = 1700000000000;
+      expect(typeof formatDate(ts)).toBe('string');
+      expect(formatDate(ts).length).toBeGreaterThan(0);
+      expect(typeof formatDateTime(ts)).toBe('string');
+      expect(formatDateTime(ts).length).toBeGreaterThan(0);
+    });
   });
 });
+

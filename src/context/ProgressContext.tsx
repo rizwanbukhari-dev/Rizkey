@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { TestResult, LessonProgress, Achievement, StageProgress, StageExamResult } from '../types/typing';
 import { storage, StreakData } from '../utils/storage';

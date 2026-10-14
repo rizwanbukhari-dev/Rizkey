@@ -10,18 +10,16 @@ import {
   BookOpen,
   Target,
   BrainCircuit,
-  Zap,
   Flame,
-  CheckCircle2,
   TrendingUp,
-  Award,
   ArrowRight,
   Sparkles,
   Calendar,
-  Gamepad2,
-  Code2,
-  Shield,
 } from 'lucide-react';
+
+function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -31,7 +29,6 @@ export const HomePage: React.FC = () => {
     bestWpm,
     averageWpm,
     averageAccuracy,
-    totalTimeSeconds,
     streak,
     lessons,
   } = useProgress();
@@ -39,7 +36,7 @@ export const HomePage: React.FC = () => {
   const completedLessons = Object.values(lessons).filter((l) => l.completed).length;
 
   // Real today activity from storage
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
   const allActivities = storage.getDailyActivities();
   const todayData = allActivities[todayStr] || { count: 0, practiceSeconds: 0 };
   const dailyGoalTarget = 3; // 3 tests per day goal

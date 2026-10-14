@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { HelpCircle, Home, Keyboard, Target, BookOpen } from 'lucide-react';
+import { HelpCircle, Home, Keyboard } from 'lucide-react';
 
 export const NotFoundPage: React.FC = () => {
   return (
