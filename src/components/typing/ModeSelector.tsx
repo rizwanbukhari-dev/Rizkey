@@ -1,18 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TestMode, TimeLimit, WordLimit, Difficulty } from '../../types/typing';
-import { Clock, AlignLeft, Quote, Sparkles, Sliders } from 'lucide-react';
+import { Clock, AlignLeft, Quote, Sparkles, Sliders, Edit3 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 
 interface ModeSelectorProps {
   mode: TestMode;
-  timeLimit: TimeLimit;
-  wordLimit: WordLimit;
+  timeLimit: TimeLimit | number;
+  wordLimit: WordLimit | number;
   difficulty: Difficulty;
   includePunctuation: boolean;
   includeNumbers: boolean;
   onModeChange: (mode: TestMode) => void;
-  onTimeLimitChange: (limit: TimeLimit) => void;
-  onWordLimitChange: (limit: WordLimit) => void;
+  onTimeLimitChange: (limit: TimeLimit | number) => void;
+  onWordLimitChange: (limit: WordLimit | number) => void;
   onDifficultyChange: (difficulty: Difficulty) => void;
   onTogglePunctuation: () => void;
   onToggleNumbers: () => void;
@@ -38,11 +38,39 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
   const wordOptions: WordLimit[] = [10, 25, 50, 100];
   const difficultyOptions: Difficulty[] = ['beginner', 'normal', 'advanced'];
 
+  const [isEditingCustomTime, setIsEditingCustomTime] = useState(false);
+  const [customTimeInput, setCustomTimeInput] = useState(timeLimit.toString());
+
+  const [isEditingCustomWords, setIsEditingCustomWords] = useState(false);
+  const [customWordsInput, setCustomWordsInput] = useState(wordLimit.toString());
+
+  const handleCustomTimeSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const val = parseInt(customTimeInput, 10);
+    if (!isNaN(val) && val >= 5 && val <= 600) {
+      onTimeLimitChange(val);
+    } else {
+      setCustomTimeInput(timeLimit.toString());
+    }
+    setIsEditingCustomTime(false);
+  };
+
+  const handleCustomWordsSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const val = parseInt(customWordsInput, 10);
+    if (!isNaN(val) && val >= 5 && val <= 1000) {
+      onWordLimitChange(val);
+    } else {
+      setCustomWordsInput(wordLimit.toString());
+    }
+    setIsEditingCustomWords(false);
+  };
+
   return (
     <div
       role="toolbar"
       aria-label="Typing test configuration toolbar"
-      className={`inline-flex flex-wrap items-center justify-center gap-1 sm:gap-2 px-3 py-2 rounded-2xl bg-[#272824] border border-[#353630] text-xs font-mono transition-all duration-150 select-none shadow-sm ${
+      className={`inline-flex flex-wrap items-center justify-center gap-1 sm:gap-2 px-3 py-1.5 rounded-2xl bg-[#272824] border border-[#353630] text-xs font-mono transition-all duration-150 select-none shadow-sm ${
         disabled ? 'opacity-40 pointer-events-none' : ''
       }`}
     >
@@ -54,7 +82,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={includePunctuation}
             className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all duration-150 ${
               includePunctuation
-                ? 'text-[#E6C76B] font-bold bg-[#20211D] shadow-xs'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D] shadow-xs'
                 : 'text-[#989A92] hover:text-[#ECEBE4] hover:bg-[#20211D]/40'
             }`}
           >
@@ -69,7 +97,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={includeNumbers}
             className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all duration-150 ${
               includeNumbers
-                ? 'text-[#E6C76B] font-bold bg-[#20211D] shadow-xs'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D] shadow-xs'
                 : 'text-[#989A92] hover:text-[#ECEBE4] hover:bg-[#20211D]/40'
             }`}
           >
@@ -87,7 +115,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={mode === 'time'}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all duration-150 ${
               mode === 'time'
-                ? 'text-[#E6C76B] font-bold bg-[#20211D] shadow-xs'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D] shadow-xs'
                 : 'text-[#989A92] hover:text-[#ECEBE4] hover:bg-[#20211D]/40'
             }`}
           >
@@ -102,7 +130,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={mode === 'words'}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all duration-150 ${
               mode === 'words'
-                ? 'text-[#E6C76B] font-bold bg-[#20211D] shadow-xs'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D] shadow-xs'
                 : 'text-[#989A92] hover:text-[#ECEBE4] hover:bg-[#20211D]/40'
             }`}
           >
@@ -117,7 +145,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={mode === 'quote'}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all duration-150 ${
               mode === 'quote'
-                ? 'text-[#E6C76B] font-bold bg-[#20211D] shadow-xs'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D] shadow-xs'
                 : 'text-[#989A92] hover:text-[#ECEBE4] hover:bg-[#20211D]/40'
             }`}
           >
@@ -132,7 +160,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={mode === 'sentences'}
             className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all duration-150 ${
               mode === 'sentences'
-                ? 'text-[#E6C76B] font-bold bg-[#20211D] shadow-xs'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D] shadow-xs'
                 : 'text-[#989A92] hover:text-[#ECEBE4] hover:bg-[#20211D]/40'
             }`}
           >
@@ -152,13 +180,44 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
               aria-pressed={timeLimit === t}
               className={`px-2 py-0.5 rounded-lg transition-all duration-150 ${
                 timeLimit === t
-                  ? 'text-[#E6C76B] font-bold bg-[#20211D]'
+                  ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D]'
                   : 'text-[#989A92] hover:text-[#ECEBE4]'
               }`}
             >
               {t}s
             </button>
           ))}
+
+          {/* Custom Time Option */}
+          {isEditingCustomTime ? (
+            <form onSubmit={handleCustomTimeSubmit} className="inline-flex items-center">
+              <input
+                type="number"
+                min="5"
+                max="600"
+                autoFocus
+                value={customTimeInput}
+                onChange={(e) => setCustomTimeInput(e.target.value)}
+                onBlur={() => handleCustomTimeSubmit()}
+                className="w-12 px-1 py-0.5 rounded bg-[#20211D] border border-[var(--accent-color)] text-[#ECEBE4] text-center text-xs focus:outline-none"
+              />
+            </form>
+          ) : (
+            <Tooltip content="Set custom duration">
+              <button
+                type="button"
+                onClick={() => setIsEditingCustomTime(true)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg transition-all duration-150 ${
+                  !timeOptions.includes(timeLimit as TimeLimit)
+                    ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D]'
+                    : 'text-[#989A92] hover:text-[#ECEBE4]'
+                }`}
+              >
+                <Edit3 className="w-3 h-3" />
+                <span>{!timeOptions.includes(timeLimit as TimeLimit) ? `${timeLimit}s` : 'custom'}</span>
+              </button>
+            </Tooltip>
+          )}
         </div>
       )}
 
@@ -172,13 +231,44 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
               aria-pressed={wordLimit === w}
               className={`px-2 py-0.5 rounded-lg transition-all duration-150 ${
                 wordLimit === w
-                  ? 'text-[#E6C76B] font-bold bg-[#20211D]'
+                  ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D]'
                   : 'text-[#989A92] hover:text-[#ECEBE4]'
               }`}
             >
               {w}
             </button>
           ))}
+
+          {/* Custom Words Option */}
+          {isEditingCustomWords ? (
+            <form onSubmit={handleCustomWordsSubmit} className="inline-flex items-center">
+              <input
+                type="number"
+                min="5"
+                max="1000"
+                autoFocus
+                value={customWordsInput}
+                onChange={(e) => setCustomWordsInput(e.target.value)}
+                onBlur={() => handleCustomWordsSubmit()}
+                className="w-12 px-1 py-0.5 rounded bg-[#20211D] border border-[var(--accent-color)] text-[#ECEBE4] text-center text-xs focus:outline-none"
+              />
+            </form>
+          ) : (
+            <Tooltip content="Set custom word count">
+              <button
+                type="button"
+                onClick={() => setIsEditingCustomWords(true)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg transition-all duration-150 ${
+                  !wordOptions.includes(wordLimit as WordLimit)
+                    ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D]'
+                    : 'text-[#989A92] hover:text-[#ECEBE4]'
+                }`}
+              >
+                <Edit3 className="w-3 h-3" />
+                <span>{!wordOptions.includes(wordLimit as WordLimit) ? `${wordLimit}` : 'custom'}</span>
+              </button>
+            </Tooltip>
+          )}
         </div>
       )}
 
@@ -192,7 +282,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
             aria-pressed={difficulty === d}
             className={`capitalize px-2 py-0.5 rounded-lg text-[11px] transition-all duration-150 ${
               difficulty === d
-                ? 'text-[#E6C76B] font-bold bg-[#20211D]'
+                ? 'text-[var(--accent-color,#E6C76B)] font-bold bg-[#20211D]'
                 : 'text-[#989A92] hover:text-[#ECEBE4]'
             }`}
           >

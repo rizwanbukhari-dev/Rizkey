@@ -20,14 +20,14 @@ import {
 
 function createTestText(
   mode: TestMode,
-  timeLimit: TimeLimit,
-  wordLimit: WordLimit,
+  timeLimit: number,
+  wordLimit: number,
   difficulty: Difficulty,
   includePunctuation: boolean,
   includeNumbers: boolean
 ): string {
   if (mode === 'time') {
-    const count = Math.max(100, timeLimit * 4);
+    const count = Math.max(100, Math.round(timeLimit * 4));
     return generateWords({
       count,
       punctuation: includePunctuation,
@@ -56,8 +56,8 @@ export const TestPage: React.FC = () => {
   const { addTestResult } = useProgress();
 
   const [mode, setMode] = useState<TestMode>(settings.defaultMode);
-  const [timeLimit, setTimeLimit] = useState<TimeLimit>(settings.defaultTimeLimit);
-  const [wordLimit, setWordLimit] = useState<WordLimit>(settings.defaultWordLimit);
+  const [timeLimit, setTimeLimit] = useState<number>(settings.defaultTimeLimit);
+  const [wordLimit, setWordLimit] = useState<number>(settings.defaultWordLimit);
   const [difficulty, setDifficulty] = useState<Difficulty>(settings.difficulty);
   const [includePunctuation, setIncludePunctuation] = useState<boolean>(settings.includePunctuation);
   const [includeNumbers, setIncludeNumbers] = useState<boolean>(settings.includeNumbers);
@@ -127,12 +127,16 @@ export const TestPage: React.FC = () => {
             }}
             onTimeLimitChange={(t) => {
               setTimeLimit(t);
-              updateSettings({ defaultTimeLimit: t });
+              if ([15, 30, 60, 120].includes(t)) {
+                updateSettings({ defaultTimeLimit: t as TimeLimit });
+              }
               generateNewText(mode, t, wordLimit, difficulty, includePunctuation, includeNumbers);
             }}
             onWordLimitChange={(w) => {
               setWordLimit(w);
-              updateSettings({ defaultWordLimit: w });
+              if ([10, 25, 50, 100].includes(w)) {
+                updateSettings({ defaultWordLimit: w as WordLimit });
+              }
               generateNewText(mode, timeLimit, w, difficulty, includePunctuation, includeNumbers);
             }}
             onDifficultyChange={(d) => {

@@ -65,6 +65,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const [liveRawWpm, setLiveRawWpm] = useState(0);
   const [liveAccuracy, setLiveAccuracy] = useState(100);
   const [displayTime, setDisplayTime] = useState<number>(timeLimit);
+  const [caretPos, setCaretPos] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   // Timing references
   const startTimeRef = useRef<number | null>(null);
@@ -774,22 +775,83 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
+  // Floating smooth caret position calculator
+  const updateCaretPosition = useCallback(() => {
+    if (settings.caretStyle === 'off') return;
+    const wordEl = wordRefs.current[wordIndex];
+    if (!wordEl || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const curTargetWord = targetWords[wordIndex] || '';
+
+    // If currently within the word length, target the exact character
+    if (currentTyped.length < curTargetWord.length) {
+      const charEl = wordEl.querySelector(`[data-char-idx="${currentTyped.length}"]`) as HTMLElement | null;
+      if (charEl) {
+        const charRect = charEl.getBoundingClientRect();
+        setCaretPos({
+          left: charRect.left - containerRect.left + container.scrollLeft,
+          top: charRect.top - containerRect.top + container.scrollTop,
+          width: charRect.width || (desktopFontSize * 0.6),
+          height: charRect.height || desktopFontSize,
+        });
+        return;
+      }
+    }
+
+    // If at or past the end of the word (extra characters)
+    const allChars = wordEl.querySelectorAll('.char-element');
+    const lastCharEl = allChars.length > 0 ? (allChars[allChars.length - 1] as HTMLElement) : null;
+    if (lastCharEl) {
+      const lastRect = lastCharEl.getBoundingClientRect();
+      setCaretPos({
+        left: lastRect.right - containerRect.left + container.scrollLeft,
+        top: lastRect.top - containerRect.top + container.scrollTop,
+        width: desktopFontSize * 0.6,
+        height: lastRect.height || desktopFontSize,
+      });
+    } else {
+      const wordRect = wordEl.getBoundingClientRect();
+      setCaretPos({
+        left: wordRect.left - containerRect.left + container.scrollLeft,
+        top: wordRect.top - containerRect.top + container.scrollTop,
+        width: desktopFontSize * 0.6,
+        height: wordRect.height || desktopFontSize,
+      });
+    }
+  }, [wordIndex, currentTyped, targetWords, desktopFontSize, settings.caretStyle]);
+
+  useEffect(() => {
+    updateCaretPosition();
+  }, [updateCaretPosition, wordIndex, currentTyped, initialText]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      updateCaretPosition();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [updateCaretPosition]);
+
   return (
     <div
       className={`w-full ${maxWidthClass} mx-auto flex flex-col items-center select-none relative`}
       onClick={() => inputRef.current?.focus()}
     >
       {/* Live Statistics & Controls Header (HUD) */}
-      <div className="w-full flex items-center justify-between py-3 px-4 sm:px-6 mb-5 text-xs font-mono text-[#989A92] border-b border-[#353630]/70">
+      <div className={`w-full flex items-center justify-between py-3 px-4 sm:px-6 mb-5 text-xs font-mono text-[#989A92] border-b border-[#353630]/70 transition-opacity duration-300 ${
+        isStarted && !isPaused ? 'opacity-70 hover:opacity-100' : 'opacity-100'
+      }`}>
         <div className="flex items-center gap-6 sm:gap-8">
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl sm:text-4xl font-bold text-[#E6C76B] font-mono tracking-tight">
+            <span className="text-3xl sm:text-4xl font-bold text-[var(--accent-color,#E6C76B)] font-mono tracking-tight">
               {isStarted ? liveWpm : 0}
             </span>
             <span className="text-xs text-[#7E8079] font-semibold tracking-wider uppercase">WPM</span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl sm:text-4xl font-bold text-[#5DBE76] font-mono tracking-tight">
+            <span className="text-3xl sm:text-4xl font-bold text-[var(--correct-color,#5DBE76)] font-mono tracking-tight">
               {liveAccuracy}%
             </span>
             <span className="text-xs text-[#7E8079] font-semibold tracking-wider uppercase">ACC</span>
@@ -919,7 +981,8 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         />
         <div
           ref={containerRef}
-          className={`typing-text-surface w-full min-h-[200px] sm:min-h-[230px] md:min-h-[260px] max-h-[300px] sm:max-h-[340px] md:max-h-[390px] overflow-y-auto overflow-x-hidden no-scrollbar py-6 sm:py-8 md:py-10 px-5 sm:px-8 md:px-10 cursor-text font-mono tracking-wide rounded-2xl sm:rounded-3xl relative transition-all duration-200 ${
+          onScroll={updateCaretPosition}
+          className={`typing-text-surface w-full min-h-[200px] sm:min-h-[230px] md:min-h-[260px] max-h-[300px] sm:max-h-[340px] md:max-h-[390px] overflow-y-auto overflow-x-hidden no-scrollbar py-6 sm:py-8 md:py-10 px-5 sm:px-8 md:px-10 cursor-text font-mono tracking-wide rounded-2xl sm:rounded-3xl relative transition-all duration-200 select-none ${
             !isFocused || isPaused ? 'opacity-30 blur-[1.5px]' : 'opacity-100'
           }`}
           style={{
@@ -930,6 +993,47 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
             ['--typing-font-mobile' as string]: `${mobileFontSize}px`,
           }}
         >
+          {/* Smooth Floating Caret */}
+          {settings.caretStyle !== 'off' && !isPaused && caretPos && (
+            <div
+              className={`absolute pointer-events-none z-20 ${
+                settings.caretAnimation === 'smooth'
+                  ? 'transition-[left,top] duration-75 ease-out'
+                  : ''
+              } ${
+                !isStarted ? 'animate-pulse' : ''
+              }`}
+              style={{
+                left: `${caretPos.left}px`,
+                top: `${caretPos.top}px`,
+                height: `${caretPos.height || desktopFontSize}px`,
+                width:
+                  settings.caretStyle === 'block'
+                    ? `${caretPos.width || (desktopFontSize * 0.6)}px`
+                    : settings.caretStyle === 'underline'
+                    ? `${caretPos.width || (desktopFontSize * 0.6)}px`
+                    : '3px',
+                backgroundColor:
+                  settings.caretStyle === 'block'
+                    ? 'var(--accent-subtle)'
+                    : settings.caretStyle === 'line'
+                    ? 'var(--accent-color)'
+                    : 'transparent',
+                borderBottom:
+                  settings.caretStyle === 'underline'
+                    ? '3px solid var(--accent-color)'
+                    : settings.caretStyle === 'block'
+                    ? '2.5px solid var(--accent-color)'
+                    : undefined,
+                borderRadius: settings.caretStyle === 'line' ? '9999px' : '2px',
+                boxShadow:
+                  settings.caretStyle === 'line'
+                    ? '0 0 10px var(--accent-subtle)'
+                    : undefined,
+              }}
+            />
+          )}
+
           {/* Word Flex Container with Generous 16–24px Word Spacing & Compact Natural 1.45 Line Height */}
           <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-5 lg:gap-x-6 gap-y-1.5 sm:gap-y-2">
             {targetWords.map((word, wIdx) => {
@@ -945,7 +1049,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
                   }}
                   className={`relative inline-block transition-all duration-150 rounded-lg px-2 py-0.5 border ${
                     isCurrent
-                      ? 'bg-[var(--accent-subtle)]/45 border-[var(--accent-color)]/35 shadow-xs'
+                      ? 'bg-[var(--accent-subtle)]/40 border-[var(--accent-color)]/30 shadow-xs'
                       : 'border-transparent'
                   }`}
                   style={{ lineHeight: 1.45 }}
@@ -962,10 +1066,10 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
                             key={cIdx}
                             className={
                               isCorrect
-                                ? 'text-[#5DBE76] opacity-90 font-medium'
+                                ? 'text-[var(--correct-color,#5DBE76)] opacity-90 font-medium'
                                 : isMissed
-                                ? 'text-[#E55858] opacity-90 underline decoration-red-500/75'
-                                : 'text-[#E55858] opacity-90 underline decoration-red-500/75'
+                                ? 'text-[var(--incorrect-color,#E55858)] opacity-90 underline decoration-red-500/75'
+                                : 'text-[var(--incorrect-color,#E55858)] opacity-90 underline decoration-red-500/75'
                             }
                           >
                             {char}
@@ -973,7 +1077,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
                         );
                       })}
                       {pastTyped.length > word.length && (
-                        <span className="text-[#E55858] opacity-80 underline decoration-red-500/75">
+                        <span className="text-[var(--extra-color,#B34242)] opacity-85 underline decoration-red-500/75">
                           {pastTyped.slice(word.length)}
                         </span>
                       )}
@@ -986,31 +1090,21 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
                       {word.split('').map((char, cIdx) => {
                         const typedChar = currentTyped[cIdx];
                         const isTyped = cIdx < currentTyped.length;
-                        const isCaretHere = cIdx === currentTyped.length;
                         const isCorrect = typedChar === char;
 
                         return (
-                          <span key={cIdx} className="relative inline-block">
-                            {/* Caret */}
-                            {isCaretHere && settings.caretStyle !== 'off' && !isPaused && (
-                              <span
-                                className={`absolute left-0 -top-1 bottom-0 pointer-events-none z-10 ${
-                                  settings.caretStyle === 'line'
-                                    ? 'caret-line w-[3px] bg-[var(--accent-color)] rounded-full'
-                                    : settings.caretStyle === 'block'
-                                    ? 'caret-block w-full bg-[var(--accent-color)]/35 rounded-xs'
-                                    : 'caret-underline border-b-[3px] border-[var(--accent-color)]'
-                                }`}
-                              />
-                            )}
-
+                          <span
+                            key={cIdx}
+                            data-char-idx={cIdx}
+                            className="char-element relative inline-block"
+                          >
                             <span
                               className={
                                 !isTyped
-                                  ? 'char-current-untyped text-[#ECEBE4] dark:text-[#F1F5F2] light:text-[#26342F] font-medium'
+                                  ? 'char-current-untyped text-[#ECEBE4] dark:text-[#F1F5F2] font-medium'
                                   : isCorrect
-                                  ? 'char-correct text-[#5DBE76] font-semibold'
-                                  : 'char-incorrect text-[#E55858] font-bold bg-red-500/20 px-0.5 rounded-xs underline decoration-red-500'
+                                  ? 'char-correct text-[var(--correct-color,#5DBE76)] font-semibold'
+                                  : 'char-incorrect text-[var(--incorrect-color,#E55858)] font-bold bg-red-500/20 px-0.5 rounded-xs underline decoration-red-500'
                               }
                             >
                               {char}
@@ -1021,14 +1115,9 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
                       {/* Extra characters typed beyond word length */}
                       {currentTyped.length > word.length && (
-                        <span className="char-extra text-[#E55858] font-bold bg-red-500/25 px-0.5 rounded-xs underline decoration-red-500">
+                        <span className="char-element char-extra text-[var(--extra-color,#B34242)] font-bold bg-red-500/25 px-0.5 rounded-xs underline decoration-red-500">
                           {currentTyped.slice(word.length)}
                         </span>
-                      )}
-
-                      {/* Caret after end of word */}
-                      {currentTyped.length >= word.length && settings.caretStyle !== 'off' && !isPaused && (
-                        <span className="inline-block w-[3px] h-[1.2em] bg-[var(--accent-color)] align-middle caret-line rounded-full ml-0.5" />
                       )}
                     </>
                   )}
@@ -1052,7 +1141,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
             onClick={togglePause}
           >
             <div className="flex flex-col items-center gap-3 p-6 sm:p-8 rounded-2xl bg-[#272824] border border-[#353630] shadow-2xl text-center">
-              <div className="w-12 h-12 rounded-full bg-[#E6C76B]/15 border border-[#E6C76B]/30 flex items-center justify-center text-[#E6C76B]">
+              <div className="w-12 h-12 rounded-full bg-[var(--accent-subtle)] border border-[var(--accent-color)]/30 flex items-center justify-center text-[var(--accent-color)]">
                 <Pause className="w-6 h-6" />
               </div>
               <h3 className="text-lg font-bold text-[#ECEBE4] font-mono">Test Paused</h3>
@@ -1072,32 +1161,24 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
             className="absolute inset-0 flex flex-col items-center justify-center bg-[#20211D]/80 backdrop-blur-xs rounded-2xl sm:rounded-3xl cursor-pointer z-20 animate-fadeIn p-4"
             onClick={() => inputRef.current?.focus()}
           >
-            <button
-              type="button"
-              onClick={() => inputRef.current?.focus()}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[var(--accent-color,#E6C76B)] text-[#1C2420] font-mono font-bold text-sm shadow-xl active:scale-95 transition-all hover:brightness-105 cursor-pointer"
-            >
-              <Keyboard className="w-4 h-4" />
-              <span>Tap or Click to Start Typing</span>
-            </button>
+            <div className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-[var(--surface-color,#272824)] border border-[var(--border-color,#353630)] text-[#ECEBE4] font-mono text-sm shadow-2xl active:scale-95 transition-all hover:border-[var(--accent-color)]">
+              <Keyboard className="w-4 h-4 text-[var(--accent-color)] animate-pulse" />
+              <span className="font-semibold">Click or press any key to focus</span>
+            </div>
             <span className="mt-2 text-xs text-[#989A92] font-mono">
-              Touch anywhere or press any key to open keyboard
+              Ready whenever you are
             </span>
           </div>
         )}
       </div>
 
       {/* Beginner-Friendly Distraction-Free Helper & Hint Bar */}
-      <div className="mt-4 text-xs font-mono text-[#7E8079] flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-center">
-        {!isStarted ? (
-          <span>
-            Type to begin &bull; <kbd className="px-1.5 py-0.5 rounded-md bg-[#272824] border border-[#353630] text-[#ECEBE4] text-[11px] shadow-xs">Tab</kbd> restart &bull; <kbd className="px-1.5 py-0.5 rounded-md bg-[#272824] border border-[#353630] text-[#ECEBE4] text-[11px] shadow-xs">Esc</kbd> pause
-          </span>
-        ) : (
-          <span>
-            Find your rhythm &bull; <kbd className="px-1.5 py-0.5 rounded-md bg-[#272824] border border-[#353630] text-[#ECEBE4] text-[11px] shadow-xs">Tab</kbd> restart &bull; <kbd className="px-1.5 py-0.5 rounded-md bg-[#272824] border border-[#353630] text-[#ECEBE4] text-[11px] shadow-xs">Esc</kbd> pause
-          </span>
-        )}
+      <div className={`mt-4 text-xs font-mono text-[#7E8079] flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-center transition-opacity duration-300 ${
+        isStarted && !isPaused ? 'opacity-50 hover:opacity-100' : 'opacity-100'
+      }`}>
+        <span>
+          <kbd className="px-1.5 py-0.5 rounded-md bg-[#272824] border border-[#353630] text-[#ECEBE4] text-[11px] shadow-xs">Tab</kbd> restart &bull; <kbd className="px-1.5 py-0.5 rounded-md bg-[#272824] border border-[#353630] text-[#ECEBE4] text-[11px] shadow-xs">Esc</kbd> pause
+        </span>
       </div>
 
       {/* Virtual Keyboard */}

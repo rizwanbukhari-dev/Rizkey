@@ -47,6 +47,7 @@ export type AccentColorId = 'teal' | 'blue' | 'purple' | 'green' | 'amber' | 'ro
 
 export interface UserSettings {
   theme: 'dark' | 'light';
+  themePreset?: string;
   accentColor: AccentColorId;
   fontFamily: FontFamily;
   fontSize: number; // 20 to 40

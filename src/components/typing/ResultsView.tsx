@@ -68,7 +68,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
     <div className="w-full max-w-4xl mx-auto py-6 px-4 animate-fadeIn">
       {/* Header with Personal Best Notification */}
       {isPersonalBest && (
-        <div className="mb-6 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E6C76B]/15 border border-[#E6C76B]/40 text-[#E6C76B] text-xs font-mono font-medium animate-bounce">
+        <div className="mb-6 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--accent-subtle)] border border-[var(--accent-color)]/40 text-[var(--accent-color)] text-xs font-mono font-medium animate-bounce">
           <Trophy className="w-4 h-4" />
           <span>New Personal Best! Congratulations!</span>
         </div>
@@ -81,11 +81,11 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
           <span className="text-xs font-mono text-[#989A92] uppercase tracking-wider">
             Net WPM
           </span>
-          <div className="text-5xl md:text-6xl font-bold font-mono text-[#E6C76B] my-2">
+          <div className="text-5xl md:text-6xl font-bold font-mono text-[var(--accent-color)] my-2">
             {wpm}
           </div>
           <div className="text-xs text-[#989A92] flex items-center gap-1 font-mono">
-            <Sparkles className="w-3.5 h-3.5 text-[#E6C76B]" />
+            <Sparkles className="w-3.5 h-3.5 text-[var(--accent-color)]" />
             <span>Raw: {rawWpm} WPM</span>
           </div>
         </div>
@@ -95,11 +95,11 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
           <span className="text-xs font-mono text-[#989A92] uppercase tracking-wider">
             Accuracy
           </span>
-          <div className="text-5xl md:text-6xl font-bold font-mono text-[#5DBE76] my-2">
+          <div className="text-5xl md:text-6xl font-bold font-mono text-[var(--correct-color)] my-2">
             {accuracy}%
           </div>
           <div className="text-xs text-[#989A92] flex items-center gap-1 font-mono">
-            <Target className="w-3.5 h-3.5 text-[#5DBE76]" />
+            <Target className="w-3.5 h-3.5 text-[var(--correct-color)]" />
             <span>Consistency: {consistency}%</span>
           </div>
         </div>
@@ -110,9 +110,9 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
             Characters
           </span>
           <div className="font-mono text-2xl font-semibold text-[#ECEBE4] my-2 flex items-baseline gap-1.5">
-            <span className="text-[#5DBE76]">{charStats.correct}</span>
+            <span className="text-[var(--correct-color)]">{charStats.correct}</span>
             <span className="text-[#989A92] text-sm">/</span>
-            <span className="text-[#E55858]">{charStats.incorrect}</span>
+            <span className="text-[var(--incorrect-color)]">{charStats.incorrect}</span>
             <span className="text-[#989A92] text-sm">/</span>
             <span className="text-[#989A92] text-sm">{charStats.extra || 0}</span>
           </div>
@@ -141,16 +141,16 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
         <div className="bg-[#272824] border border-[#353630] rounded-2xl p-5 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-mono font-medium text-[#ECEBE4] flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-[#E6C76B]" />
+              <BarChart3 className="w-4 h-4 text-[var(--accent-color)]" />
               <span>Speed & Consistency Timeline</span>
             </h2>
             <div className="flex items-center gap-4 text-xs font-mono">
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-0.5 bg-[#E6C76B]" />
+                <span className="w-3 h-0.5 bg-[var(--accent-color)]" />
                 <span className="text-[#989A92]">WPM</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-0.5 bg-[#5DBE76]/70" />
+                <span className="w-3 h-0.5 bg-[var(--correct-color)]/70" />
                 <span className="text-[#989A92]">Raw</span>
               </div>
             </div>
@@ -188,10 +188,10 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                 <Line
                   type="monotone"
                   dataKey="rawWpm"
-                  stroke="#5DBE76"
+                  stroke="var(--correct-color)"
                   strokeWidth={1.5}
                   dot={false}
-                  opacity={0.6}
+                  opacity={0.65}
                 />
                 <Line
                   type="monotone"
@@ -212,12 +212,12 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
         <div className="bg-[#272824] border border-[#353630] rounded-2xl p-5 mb-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-mono font-medium text-[#ECEBE4] flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-[#E55858]" />
+              <AlertTriangle className="w-4 h-4 text-[var(--incorrect-color)]" />
               <span>Mistake Analysis (Frequently Missed Keys)</span>
             </h2>
             <Link
               to="/practice"
-              className="text-xs font-mono text-[#E6C76B] hover:underline"
+              className="text-xs font-mono text-[var(--accent-color)] hover:underline"
             >
               Practice weak keys &rarr;
             </Link>
@@ -229,7 +229,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
                 key={char}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#20211D] border border-[#353630] font-mono text-xs"
               >
-                <span className="font-bold text-[#E55858] text-sm">
+                <span className="font-bold text-[var(--incorrect-color)] text-sm">
                   {char === ' ' ? 'SPACE' : char}
                 </span>
                 <span className="text-[#989A92]">{count}x</span>
@@ -243,7 +243,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button
           onClick={onRetry}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#272824] hover:bg-[#32332B] text-[#ECEBE4] border border-[#353630] font-mono text-sm font-medium transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#272824] hover:bg-[#32332B] text-[#ECEBE4] border border-[#353630] font-mono text-sm font-medium transition-colors cursor-pointer"
           title="Restart same test"
         >
           <RotateCcw className="w-4 h-4 text-[#989A92]" />
@@ -253,7 +253,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
         <button
           onClick={onNextTest}
           autoFocus
-          className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#E6C76B] hover:bg-[#F0D47C] text-[#20211D] font-mono text-sm font-bold shadow-md transition-all hover:scale-105"
+          className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-[var(--accent-text)] font-mono text-sm font-bold shadow-md transition-all hover:scale-105 cursor-pointer"
         >
           <Play className="w-4 h-4 fill-current" />
           <span>Next Test (Tab)</span>

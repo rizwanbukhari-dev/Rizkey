@@ -6,7 +6,7 @@ import { storage } from '../utils/storage';
 import { soundEngine } from '../utils/sound';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
-import { ACCENT_PRESETS } from '../data/theme';
+import { ACCENT_PRESETS, THEME_PRESETS, getThemePreset } from '../data/theme';
 import {
   FontFamily,
   SoundTheme,
@@ -122,11 +122,76 @@ export const SettingsPage: React.FC = () => {
           </h2>
 
           <div className="space-y-5 text-xs font-mono">
+            {/* Curated Theme Presets */}
+            <div className="space-y-3 pb-3 border-b border-[#353630]/60">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[#ECEBE4] font-semibold block text-sm">Theme Presets</span>
+                  <span className="text-[#989A92]">Instant full-palette themes inspired by Monkeytype and RizKey</span>
+                </div>
+                <span className="text-[11px] font-bold text-[var(--accent-color)]">
+                  {getThemePreset(settings.themePreset).name}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-1">
+                {THEME_PRESETS.map((preset) => {
+                  const isSelected = (settings.themePreset || 'rizkey_amber') === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        updateSettings({
+                          themePreset: preset.id,
+                          theme: preset.mode,
+                        });
+                        toast.info(`Theme set to ${preset.name}`);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? 'border-[var(--accent-color)] bg-[#20211D] ring-1 ring-[var(--accent-color)] shadow-sm'
+                          : 'border-[#353630] bg-[#20211D]/40 hover:bg-[#20211D] hover:border-[#42443C]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`font-bold truncate text-xs ${isSelected ? 'text-[var(--accent-color)]' : 'text-[#ECEBE4]'}`}>
+                          {preset.name}
+                        </span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-[var(--accent-color)] stroke-[3]" />}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span
+                          className="w-4 h-4 rounded-full border border-black/20"
+                          style={{ backgroundColor: preset.bgColor }}
+                          title="Background"
+                        />
+                        <span
+                          className="w-4 h-4 rounded-full border border-black/20"
+                          style={{ backgroundColor: preset.accentColor }}
+                          title="Accent"
+                        />
+                        <span
+                          className="w-4 h-4 rounded-full border border-black/20"
+                          style={{ backgroundColor: preset.textColor }}
+                          title="Text"
+                        />
+                      </div>
+                      <span className="text-[10px] text-[#7E8079] block truncate">
+                        {preset.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Color Theme */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <span className="text-[#ECEBE4] font-semibold block">Color Theme</span>
-                <span className="text-[#989A92]">Select dark charcoal or light beige interface</span>
+                <span className="text-[#ECEBE4] font-semibold block">Color Mode</span>
+                <span className="text-[#989A92]">Quick toggle between dark charcoal and light beige interface</span>
               </div>
               <div className="flex gap-2">
                 {(['dark', 'light'] as const).map((th) => (

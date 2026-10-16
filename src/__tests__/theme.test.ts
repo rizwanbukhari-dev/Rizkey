@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ACCENT_PRESETS, getAccentPreset } from '../data/theme';
+import { ACCENT_PRESETS, THEME_PRESETS, getAccentPreset, getThemePreset } from '../data/theme';
 import { storage } from '../utils/storage';
 
 describe('Global Theme & Accent Colour System', () => {
@@ -27,6 +27,20 @@ describe('Global Theme & Accent Colour System', () => {
     });
   });
 
+  it('provides rich Monkeytype-inspired theme presets with complete color palettes', () => {
+    expect(THEME_PRESETS.length).toBeGreaterThanOrEqual(8);
+
+    const requiredThemes = ['rizkey_amber', 'serika_dark', 'carbon', 'nord', 'dracula', 'cyberpunk', 'matrix', 'botanical', 'paper_light'];
+    requiredThemes.forEach((themeId) => {
+      const preset = getThemePreset(themeId);
+      expect(preset).toBeDefined();
+      expect(preset.id).toBe(themeId);
+      expect(preset.bgColor).toBeDefined();
+      expect(preset.textColor).toBeDefined();
+      expect(preset.accentColor).toBeDefined();
+    });
+  });
+
   it('getAccentPreset returns correct preset or defaults to Amber', () => {
     const teal = getAccentPreset('teal');
     expect(teal.name).toBe('Teal');
@@ -37,6 +51,15 @@ describe('Global Theme & Accent Colour System', () => {
     expect(fallback.hex).toBe('#C58A26');
   });
 
+  it('getThemePreset returns correct theme or defaults to RizKey Signature', () => {
+    const serika = getThemePreset('serika_dark');
+    expect(serika.name).toBe('Serika Dark');
+    expect(serika.accentColor).toBe('#e2b714');
+
+    const fallback = getThemePreset('non_existent_theme');
+    expect(fallback.id).toBe('rizkey_amber');
+  });
+
   it('persists and restores selected theme and accent colour in storage', () => {
     const defaultSettings = storage.getSettings();
     expect(defaultSettings.theme).toBe('dark');
@@ -45,11 +68,14 @@ describe('Global Theme & Accent Colour System', () => {
     storage.saveSettings({
       ...defaultSettings,
       theme: 'light',
+      themePreset: 'serika_dark',
       accentColor: 'rose',
     });
 
     const restored = storage.getSettings();
     expect(restored.theme).toBe('light');
+    expect(restored.themePreset).toBe('serika_dark');
     expect(restored.accentColor).toBe('rose');
   });
 });
+

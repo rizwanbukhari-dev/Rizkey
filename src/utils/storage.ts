@@ -40,6 +40,7 @@ export const DEFAULT_CUSTOM_PASSAGES: CustomPassage[] = [
 
 export const DEFAULT_SETTINGS: UserSettings = {
   theme: 'dark',
+  themePreset: 'rizkey_amber',
   accentColor: 'amber',
   fontFamily: 'JetBrains Mono',
   fontSize: 32,
