@@ -55,7 +55,7 @@ export const Footer: React.FC = () => {
               className="flex items-center gap-1.5 font-mono text-[#989A92] hover:text-[#ECEBE4] transition-colors group cursor-pointer"
               title="View keyboard shortcut cheat sheet"
             >
-              <kbd className="px-1.5 py-0.5 rounded bg-[#272824] border border-[#353630] text-[#E6C76B] text-[11px] group-hover:border-[#E6C76B]">
+              <kbd className="px-1.5 py-0.5 rounded bg-[#272824] border border-[#353630] text-[var(--accent-color,#E6C76B)] text-[11px] group-hover:border-[var(--accent-color,#E6C76B)]">
                 ?
               </kbd>
               <span>shortcuts</span>
@@ -93,7 +93,7 @@ export const Footer: React.FC = () => {
 
           {/* Tagline */}
           <div className="flex items-center gap-1.5 text-[#989A92] font-mono text-[11px]">
-            <Sparkles className="w-3.5 h-3.5 text-[#E6C76B]" />
+            <Sparkles className="w-3.5 h-3.5 text-[var(--accent-color,#E6C76B)]" />
             <span>Find your rhythm. Master your keys.</span>
           </div>
         </div>
@@ -109,7 +109,7 @@ export const Footer: React.FC = () => {
           <div className="divide-y divide-[#353630]">
             {shortcuts.map((s) => (
               <div key={s.key} className="py-2.5 flex items-center justify-between gap-4">
-                <kbd className="px-2 py-1 rounded bg-[#20211D] border border-[#353630] text-[#E6C76B] text-xs font-bold">
+                <kbd className="px-2 py-1 rounded bg-[#20211D] border border-[#353630] text-[var(--accent-color,#E6C76B)] text-xs font-bold">
                   {s.key}
                 </kbd>
                 <span className="text-[#989A92] text-right">{s.desc}</span>

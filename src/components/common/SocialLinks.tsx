@@ -137,7 +137,7 @@ export const SocialLinks: React.FC<SocialLinksProps> = ({
               rel="noopener noreferrer"
               aria-label={item.label}
               title={`${item.name} (${item.username})`}
-              className={`inline-flex items-center justify-center rounded-lg bg-[#272824] border border-[#353630] text-[#989A92] hover:text-[#E6C76B] hover:border-[#E6C76B] hover:bg-[#2E2F2A] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6C76B] active:scale-95 cursor-pointer shadow-xs ${sizeClasses[size]}`}
+              className={`inline-flex items-center justify-center rounded-lg bg-[#272824] border border-[#353630] text-[#989A92] hover:text-[var(--accent-color)] hover:border-[var(--accent-color)] hover:bg-[#2E2F2A] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)] active:scale-95 cursor-pointer shadow-xs ${sizeClasses[size]}`}
             >
               <Icon className={iconSizes[size]} />
             </a>
