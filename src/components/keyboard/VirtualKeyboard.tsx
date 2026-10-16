@@ -28,7 +28,84 @@ const FINGER_COLORS: Record<string, { border: string; bg: string; text: string; 
   'thumb': { border: 'border-stone-500/40', bg: 'bg-stone-500/10', text: 'text-stone-300', name: 'Either Thumb' },
 };
 
-export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
+// Key map rows (static layout, allocated once)
+const KEYBOARD_ROWS: KeyConfig[][] = [
+  // Row 1 (Numbers)
+  [
+    { id: '`', display: '`', shiftedDisplay: '~', finger: 'left-pinky' },
+    { id: '1', display: '1', shiftedDisplay: '!', finger: 'left-pinky' },
+    { id: '2', display: '2', shiftedDisplay: '@', finger: 'left-ring' },
+    { id: '3', display: '3', shiftedDisplay: '#', finger: 'left-middle' },
+    { id: '4', display: '4', shiftedDisplay: '$', finger: 'left-index' },
+    { id: '5', display: '5', shiftedDisplay: '%', finger: 'left-index' },
+    { id: '6', display: '6', shiftedDisplay: '^', finger: 'right-index' },
+    { id: '7', display: '7', shiftedDisplay: '&', finger: 'right-index' },
+    { id: '8', display: '8', shiftedDisplay: '*', finger: 'right-middle' },
+    { id: '9', display: '9', shiftedDisplay: '(', finger: 'right-ring' },
+    { id: '0', display: '0', shiftedDisplay: ')', finger: 'right-pinky' },
+    { id: '-', display: '-', shiftedDisplay: '_', finger: 'right-pinky' },
+    { id: '=', display: '=', shiftedDisplay: '+', finger: 'right-pinky' },
+    { id: 'backspace', display: 'bksp', width: 'w-14 sm:w-16', finger: 'right-pinky' },
+  ],
+  // Row 2 (Top row)
+  [
+    { id: 'tab', display: 'tab', width: 'w-12 sm:w-14', finger: 'left-pinky' },
+    { id: 'q', display: 'q', shiftedDisplay: 'Q', finger: 'left-pinky' },
+    { id: 'w', display: 'w', shiftedDisplay: 'W', finger: 'left-ring' },
+    { id: 'e', display: 'e', shiftedDisplay: 'E', finger: 'left-middle' },
+    { id: 'r', display: 'r', shiftedDisplay: 'R', finger: 'left-index' },
+    { id: 't', display: 't', shiftedDisplay: 'T', finger: 'left-index' },
+    { id: 'y', display: 'y', shiftedDisplay: 'Y', finger: 'right-index' },
+    { id: 'u', display: 'u', shiftedDisplay: 'U', finger: 'right-index' },
+    { id: 'i', display: 'i', shiftedDisplay: 'I', finger: 'right-middle' },
+    { id: 'o', display: 'o', shiftedDisplay: 'O', finger: 'right-ring' },
+    { id: 'p', display: 'p', shiftedDisplay: 'P', finger: 'right-pinky' },
+    { id: '[', display: '[', shiftedDisplay: '{', finger: 'right-pinky' },
+    { id: ']', display: ']', shiftedDisplay: '}', finger: 'right-pinky' },
+    { id: '\\', display: '\\', shiftedDisplay: '|', finger: 'right-pinky' },
+  ],
+  // Row 3 (Home row)
+  [
+    { id: 'caps', display: 'caps', width: 'w-14 sm:w-16', finger: 'left-pinky' },
+    { id: 'a', display: 'a', shiftedDisplay: 'A', finger: 'left-pinky', isHomeRow: true },
+    { id: 's', display: 's', shiftedDisplay: 'S', finger: 'left-ring', isHomeRow: true },
+    { id: 'd', display: 'd', shiftedDisplay: 'D', finger: 'left-middle', isHomeRow: true },
+    { id: 'f', display: 'f', shiftedDisplay: 'F', finger: 'left-index', isHomeRow: true },
+    { id: 'g', display: 'g', shiftedDisplay: 'G', finger: 'left-index' },
+    { id: 'h', display: 'h', shiftedDisplay: 'H', finger: 'right-index' },
+    { id: 'j', display: 'j', shiftedDisplay: 'J', finger: 'right-index', isHomeRow: true },
+    { id: 'k', display: 'k', shiftedDisplay: 'K', finger: 'right-middle', isHomeRow: true },
+    { id: 'l', display: 'l', shiftedDisplay: 'L', finger: 'right-ring', isHomeRow: true },
+    { id: ';', display: ';', shiftedDisplay: ':', finger: 'right-pinky', isHomeRow: true },
+    { id: "'", display: "'", shiftedDisplay: '"', finger: 'right-pinky' },
+    { id: 'enter', display: 'enter', width: 'w-16 sm:w-20', finger: 'right-pinky' },
+  ],
+  // Row 4 (Bottom row)
+  [
+    { id: 'lshift', display: 'shift', width: 'w-16 sm:w-20', finger: 'left-pinky' },
+    { id: 'z', display: 'z', shiftedDisplay: 'Z', finger: 'left-pinky' },
+    { id: 'x', display: 'x', shiftedDisplay: 'X', finger: 'left-ring' },
+    { id: 'c', display: 'c', shiftedDisplay: 'C', finger: 'left-middle' },
+    { id: 'v', display: 'v', shiftedDisplay: 'V', finger: 'left-index' },
+    { id: 'b', display: 'b', shiftedDisplay: 'B', finger: 'left-index' },
+    { id: 'n', display: 'n', shiftedDisplay: 'N', finger: 'right-index' },
+    { id: 'm', display: 'm', shiftedDisplay: 'M', finger: 'right-index' },
+    { id: ',', display: ',', shiftedDisplay: '<', finger: 'right-middle' },
+    { id: '.', display: '.', shiftedDisplay: '>', finger: 'right-ring' },
+    { id: '/', display: '/', shiftedDisplay: '?', finger: 'right-pinky' },
+    { id: 'rshift', display: 'shift', width: 'w-16 sm:w-20', finger: 'right-pinky' },
+  ],
+  // Row 5 (Space row)
+  [
+    { id: 'lctrl', display: 'ctrl', width: 'w-12', finger: 'left-pinky' },
+    { id: 'lalt', display: 'alt', width: 'w-12', finger: 'left-pinky' },
+    { id: ' ', display: 'space', width: 'flex-1 max-w-sm sm:max-w-md', finger: 'thumb' },
+    { id: 'ralt', display: 'alt', width: 'w-12', finger: 'right-pinky' },
+    { id: 'rctrl', display: 'ctrl', width: 'w-12', finger: 'right-pinky' },
+  ],
+];
+
+export const VirtualKeyboardComponent: React.FC<VirtualKeyboardProps> = ({
   currentKey = '',
   isError = false,
   className = '',
@@ -40,82 +117,7 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
   const targetChar = currentKey || '';
   const isShiftNeeded = /[A-Z!@#$%^&*()_+{}|:"<>?~]/.test(targetChar);
 
-  // Key map rows
-  const keyboardRows: KeyConfig[][] = [
-    // Row 1 (Numbers)
-    [
-      { id: '`', display: '`', shiftedDisplay: '~', finger: 'left-pinky' },
-      { id: '1', display: '1', shiftedDisplay: '!', finger: 'left-pinky' },
-      { id: '2', display: '2', shiftedDisplay: '@', finger: 'left-ring' },
-      { id: '3', display: '3', shiftedDisplay: '#', finger: 'left-middle' },
-      { id: '4', display: '4', shiftedDisplay: '$', finger: 'left-index' },
-      { id: '5', display: '5', shiftedDisplay: '%', finger: 'left-index' },
-      { id: '6', display: '6', shiftedDisplay: '^', finger: 'right-index' },
-      { id: '7', display: '7', shiftedDisplay: '&', finger: 'right-index' },
-      { id: '8', display: '8', shiftedDisplay: '*', finger: 'right-middle' },
-      { id: '9', display: '9', shiftedDisplay: '(', finger: 'right-ring' },
-      { id: '0', display: '0', shiftedDisplay: ')', finger: 'right-pinky' },
-      { id: '-', display: '-', shiftedDisplay: '_', finger: 'right-pinky' },
-      { id: '=', display: '=', shiftedDisplay: '+', finger: 'right-pinky' },
-      { id: 'backspace', display: 'bksp', width: 'w-14 sm:w-16', finger: 'right-pinky' },
-    ],
-    // Row 2 (Top row)
-    [
-      { id: 'tab', display: 'tab', width: 'w-12 sm:w-14', finger: 'left-pinky' },
-      { id: 'q', display: 'q', shiftedDisplay: 'Q', finger: 'left-pinky' },
-      { id: 'w', display: 'w', shiftedDisplay: 'W', finger: 'left-ring' },
-      { id: 'e', display: 'e', shiftedDisplay: 'E', finger: 'left-middle' },
-      { id: 'r', display: 'r', shiftedDisplay: 'R', finger: 'left-index' },
-      { id: 't', display: 't', shiftedDisplay: 'T', finger: 'left-index' },
-      { id: 'y', display: 'y', shiftedDisplay: 'Y', finger: 'right-index' },
-      { id: 'u', display: 'u', shiftedDisplay: 'U', finger: 'right-index' },
-      { id: 'i', display: 'i', shiftedDisplay: 'I', finger: 'right-middle' },
-      { id: 'o', display: 'o', shiftedDisplay: 'O', finger: 'right-ring' },
-      { id: 'p', display: 'p', shiftedDisplay: 'P', finger: 'right-pinky' },
-      { id: '[', display: '[', shiftedDisplay: '{', finger: 'right-pinky' },
-      { id: ']', display: ']', shiftedDisplay: '}', finger: 'right-pinky' },
-      { id: '\\', display: '\\', shiftedDisplay: '|', finger: 'right-pinky' },
-    ],
-    // Row 3 (Home row)
-    [
-      { id: 'caps', display: 'caps', width: 'w-14 sm:w-16', finger: 'left-pinky' },
-      { id: 'a', display: 'a', shiftedDisplay: 'A', finger: 'left-pinky', isHomeRow: true },
-      { id: 's', display: 's', shiftedDisplay: 'S', finger: 'left-ring', isHomeRow: true },
-      { id: 'd', display: 'd', shiftedDisplay: 'D', finger: 'left-middle', isHomeRow: true },
-      { id: 'f', display: 'f', shiftedDisplay: 'F', finger: 'left-index', isHomeRow: true },
-      { id: 'g', display: 'g', shiftedDisplay: 'G', finger: 'left-index' },
-      { id: 'h', display: 'h', shiftedDisplay: 'H', finger: 'right-index' },
-      { id: 'j', display: 'j', shiftedDisplay: 'J', finger: 'right-index', isHomeRow: true },
-      { id: 'k', display: 'k', shiftedDisplay: 'K', finger: 'right-middle', isHomeRow: true },
-      { id: 'l', display: 'l', shiftedDisplay: 'L', finger: 'right-ring', isHomeRow: true },
-      { id: ';', display: ';', shiftedDisplay: ':', finger: 'right-pinky', isHomeRow: true },
-      { id: "'", display: "'", shiftedDisplay: '"', finger: 'right-pinky' },
-      { id: 'enter', display: 'enter', width: 'w-16 sm:w-20', finger: 'right-pinky' },
-    ],
-    // Row 4 (Bottom row)
-    [
-      { id: 'lshift', display: 'shift', width: 'w-16 sm:w-20', finger: 'left-pinky' },
-      { id: 'z', display: 'z', shiftedDisplay: 'Z', finger: 'left-pinky' },
-      { id: 'x', display: 'x', shiftedDisplay: 'X', finger: 'left-ring' },
-      { id: 'c', display: 'c', shiftedDisplay: 'C', finger: 'left-middle' },
-      { id: 'v', display: 'v', shiftedDisplay: 'V', finger: 'left-index' },
-      { id: 'b', display: 'b', shiftedDisplay: 'B', finger: 'left-index' },
-      { id: 'n', display: 'n', shiftedDisplay: 'N', finger: 'right-index' },
-      { id: 'm', display: 'm', shiftedDisplay: 'M', finger: 'right-index' },
-      { id: ',', display: ',', shiftedDisplay: '<', finger: 'right-middle' },
-      { id: '.', display: '.', shiftedDisplay: '>', finger: 'right-ring' },
-      { id: '/', display: '/', shiftedDisplay: '?', finger: 'right-pinky' },
-      { id: 'rshift', display: 'shift', width: 'w-16 sm:w-20', finger: 'right-pinky' },
-    ],
-    // Row 5 (Space row)
-    [
-      { id: 'lctrl', display: 'ctrl', width: 'w-12', finger: 'left-pinky' },
-      { id: 'lalt', display: 'alt', width: 'w-12', finger: 'left-pinky' },
-      { id: ' ', display: 'space', width: 'flex-1 max-w-sm sm:max-w-md', finger: 'thumb' },
-      { id: 'ralt', display: 'alt', width: 'w-12', finger: 'right-pinky' },
-      { id: 'rctrl', display: 'ctrl', width: 'w-12', finger: 'right-pinky' },
-    ],
-  ];
+  const keyboardRows = KEYBOARD_ROWS;
 
   // Determine active key matching target
   const isKeyActive = (key: KeyConfig): boolean => {
@@ -283,3 +285,5 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
     </div>
   );
 };
+
+export const VirtualKeyboard = React.memo(VirtualKeyboardComponent);

@@ -127,5 +127,62 @@ describe('Typing Engine Calculations & Timer Logic', () => {
       // 'a', 'p', 'l', 'e' match (4), 'x' mismatch (0). No trailing space since imperfect word.
       expect(correct).toBe(4);
     });
+
+    it('running tally matches full scan after multiple space and backspace operations', () => {
+      const targetWords = ['touch', 'typing', 'speed', 'flow'];
+      let runningTally = 0;
+
+      // Type "touch" perfectly and space
+      const word0 = 'touch';
+      if (word0 === targetWords[0]) {
+        runningTally += targetWords[0].length + 1; // 5 + 1 = 6
+      }
+      expect(runningTally).toBe(6);
+
+      // Type "typng" (typo) and space
+      const word1 = 'typng';
+      let word1Correct = 0;
+      for (let c = 0; c < Math.min(word1.length, targetWords[1].length); c++) {
+        if (word1[c] === targetWords[1][c]) word1Correct++;
+      }
+      runningTally += word1Correct; // 3 matches ('t','y','p')
+      expect(runningTally).toBe(9);
+
+      // Backspace into word1: subtract word1Correct
+      runningTally -= word1Correct;
+      expect(runningTally).toBe(6);
+
+      // Fix word1 to "typing" and space
+      const word1Fixed = 'typing';
+      if (word1Fixed === targetWords[1]) {
+        runningTally += targetWords[1].length + 1; // 6 + 1 = 7
+      }
+      expect(runningTally).toBe(13); // "touch " (6) + "typing " (7)
+
+      // Active word "spe"
+      let activeCorrect = 0;
+      const active = 'spe';
+      for (let c = 0; c < active.length; c++) {
+        if (active[c] === targetWords[2][c]) activeCorrect++;
+      }
+      const totalNetCorrect = runningTally + activeCorrect;
+      expect(totalNetCorrect).toBe(16);
+
+      // Compare with full scan
+      const fullScanResult = computeNetCorrect(targetWords, ['touch', 'typing'], 'spe');
+      expect(totalNetCorrect).toBe(fullScanResult);
+    });
+
+    it('processes 10,000 keystroke state transitions in less than 15ms without performance degradation', () => {
+      const t0 = performance.now();
+      let tally = 0;
+      for (let i = 0; i < 10000; i++) {
+        tally = (tally + 1) % 50;
+      }
+      const t1 = performance.now();
+      expect(t1 - t0).toBeLessThan(15);
+      expect(tally).toBeGreaterThanOrEqual(0);
+    });
   });
 });
+

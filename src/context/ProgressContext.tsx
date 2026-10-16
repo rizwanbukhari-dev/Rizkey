@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { TestResult, LessonProgress, Achievement, StageProgress, StageExamResult } from '../types/typing';
 import { storage, StreakData } from '../utils/storage';
@@ -76,16 +76,31 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setResults((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
-  // Derived statistics
-  const bestWpm = results.reduce((max, r) => Math.max(max, r.wpm), 0);
-  const totalTests = results.length;
-  const averageWpm = totalTests > 0
-    ? Math.round(results.reduce((sum, r) => sum + r.wpm, 0) / totalTests)
-    : 0;
-  const averageAccuracy = totalTests > 0
-    ? Math.round((results.reduce((sum, r) => sum + r.accuracy, 0) / totalTests) * 10) / 10
-    : 0;
-  const totalTimeSeconds = results.reduce((sum, r) => sum + r.durationSeconds, 0);
+  // Derived statistics (single memoized pass)
+  const { bestWpm, totalTests, averageWpm, averageAccuracy, totalTimeSeconds } = useMemo(() => {
+    const count = results.length;
+    if (count === 0) {
+      return { bestWpm: 0, totalTests: 0, averageWpm: 0, averageAccuracy: 0, totalTimeSeconds: 0 };
+    }
+    let maxWpm = 0;
+    let sumWpm = 0;
+    let sumAcc = 0;
+    let sumTime = 0;
+    for (let i = 0; i < count; i++) {
+      const r = results[i];
+      if (r.wpm > maxWpm) maxWpm = r.wpm;
+      sumWpm += r.wpm;
+      sumAcc += r.accuracy;
+      sumTime += r.durationSeconds;
+    }
+    return {
+      bestWpm: maxWpm,
+      totalTests: count,
+      averageWpm: Math.round(sumWpm / count),
+      averageAccuracy: Math.round((sumAcc / count) * 10) / 10,
+      totalTimeSeconds: sumTime,
+    };
+  }, [results]);
 
   const addTestResult = useCallback((resData: Omit<TestResult, 'isPersonalBest'>) => {
     const isPersonalBest = totalTests > 0 ? resData.wpm > bestWpm : resData.wpm > 0;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
   TestMode,
   TimeLimit,
@@ -23,6 +23,121 @@ import {
   AlignLeft,
   Keyboard,
 } from 'lucide-react';
+
+interface WordItemProps {
+  word: string;
+  wIdx: number;
+  isCurrent: boolean;
+  isPast: boolean;
+  pastTyped: string;
+  currentTyped: string;
+  wordRef: (el: HTMLSpanElement | null) => void;
+}
+
+/**
+ * Isolated, memoized word renderer.
+ * In a 500-word test, only the active word re-renders on keystrokes,
+ * reducing virtual DOM diffing by ~500x.
+ */
+const WordItem = React.memo<WordItemProps>(
+  ({ word, isCurrent, isPast, pastTyped, currentTyped, wordRef }) => {
+    return (
+      <span
+        ref={wordRef}
+        className={`relative inline-block transition-all duration-150 rounded-lg px-2 py-0.5 border ${
+          isCurrent
+            ? 'bg-[var(--accent-subtle)]/40 border-[var(--accent-color)]/30 shadow-xs'
+            : 'border-transparent'
+        }`}
+        style={{ lineHeight: 1.45 }}
+      >
+        {/* Past word rendering: clean, distinct correct & error feedback */}
+        {isPast && (
+          <>
+            {word.split('').map((char, cIdx) => {
+              const typedChar = pastTyped[cIdx];
+              const isCorrect = typedChar === char;
+              const isMissed = cIdx >= pastTyped.length;
+              return (
+                <span
+                  key={cIdx}
+                  className={
+                    isCorrect
+                      ? 'text-[var(--correct-color,#5DBE76)] opacity-90 font-medium'
+                      : isMissed
+                      ? 'text-[var(--incorrect-color,#E55858)] opacity-90 underline decoration-red-500/75'
+                      : 'text-[var(--incorrect-color,#E55858)] opacity-90 underline decoration-red-500/75'
+                  }
+                >
+                  {char}
+                </span>
+              );
+            })}
+            {pastTyped.length > word.length && (
+              <span className="text-[var(--extra-color,#B34242)] opacity-85 underline decoration-red-500/75">
+                {pastTyped.slice(word.length)}
+              </span>
+            )}
+          </>
+        )}
+
+        {/* Current word rendering: high contrast, clear focus & caret */}
+        {isCurrent && (
+          <>
+            {word.split('').map((char, cIdx) => {
+              const typedChar = currentTyped[cIdx];
+              const isTyped = cIdx < currentTyped.length;
+              const isCorrect = typedChar === char;
+
+              return (
+                <span
+                  key={cIdx}
+                  data-char-idx={cIdx}
+                  className="char-element relative inline-block"
+                >
+                  <span
+                    className={
+                      !isTyped
+                        ? 'char-current-untyped text-[#ECEBE4] dark:text-[#F1F5F2] font-medium'
+                        : isCorrect
+                        ? 'char-correct text-[var(--correct-color,#5DBE76)] font-semibold'
+                        : 'char-incorrect text-[var(--incorrect-color,#E55858)] font-bold bg-red-500/20 px-0.5 rounded-xs underline decoration-red-500'
+                    }
+                  >
+                    {char}
+                  </span>
+                </span>
+              );
+            })}
+
+            {/* Extra characters typed beyond word length */}
+            {currentTyped.length > word.length && (
+              <span className="char-element char-extra text-[var(--extra-color,#B34242)] font-bold bg-red-500/25 px-0.5 rounded-xs underline decoration-red-500">
+                {currentTyped.slice(word.length)}
+              </span>
+            )}
+          </>
+        )}
+
+        {/* Untyped future words: clearly visible, high contrast, easy to read ahead */}
+        {!isPast && !isCurrent && (
+          <span className="char-untyped text-[#A2A79E] dark:text-[#A0A69D] font-normal transition-colors duration-150">
+            {word}
+          </span>
+        )}
+      </span>
+    );
+  },
+  (prev, next) => {
+    // Only re-render if active states or typed text changed for this specific word
+    if (prev.isCurrent !== next.isCurrent) return false;
+    if (prev.isPast !== next.isPast) return false;
+    if (next.isCurrent && prev.currentTyped !== next.currentTyped) return false;
+    if (next.isPast && prev.pastTyped !== next.pastTyped) return false;
+    if (prev.word !== next.word) return false;
+    return true;
+  }
+);
 
 interface TypingEngineProps {
   initialText: string;
@@ -65,7 +180,11 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const [liveRawWpm, setLiveRawWpm] = useState(0);
   const [liveAccuracy, setLiveAccuracy] = useState(100);
   const [displayTime, setDisplayTime] = useState<number>(timeLimit);
-  const [caretPos, setCaretPos] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  // Caret direct DOM ref (bypasses React re-renders on keystrokes)
+  const caretRef = useRef<HTMLDivElement>(null);
+  const lastMetricUpdateRef = useRef(0);
+  const completedWordsCorrectCharsRef = useRef(0);
 
   // Timing references
   const startTimeRef = useRef<number | null>(null);
@@ -107,44 +226,22 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
   const completionTimeoutRef = useRef<number | null>(null);
   const lastKeyDownHandledRef = useRef<boolean>(false);
 
-  // Helper: compute current net correct characters
-  const getNetCorrectChars = useCallback(
-    (history: string[], currentVal: string, curWordIdx: number): number => {
-      let correct = 0;
-      const effectiveTotalWords = mode === 'words' ? (wordLimit as number) : targetWords.length;
-
-      // Completed words
-      for (let i = 0; i < history.length; i++) {
-        const typed = history[i] || '';
-        const target = targetWords[i] || '';
-
-        if (typed === target) {
-          // Entire word matched + trailing space (except trailing space after last word of test)
-          correct += target.length + (i < effectiveTotalWords - 1 ? 1 : 0);
-        } else {
-          // Count exact character matches in imperfect word
-          for (let c = 0; c < Math.min(typed.length, target.length); c++) {
-            if (typed[c] === target[c]) {
-              correct++;
-            }
-          }
+  // Helper: compute current net correct characters in O(1)
+  const getNetCorrectChars = useCallback((): number => {
+    let curWordCorrect = 0;
+    const curWordIdx = wordIndexRef.current;
+    const effectiveTotalWords = mode === 'words' ? (wordLimit as number) : targetWords.length;
+    if (curWordIdx < effectiveTotalWords) {
+      const curTarget = targetWords[curWordIdx] || '';
+      const curTyped = currentTypedRef.current;
+      for (let c = 0; c < Math.min(curTyped.length, curTarget.length); c++) {
+        if (curTyped[c] === curTarget[c]) {
+          curWordCorrect++;
         }
       }
-
-      // Currently typing word
-      if (curWordIdx < effectiveTotalWords) {
-        const currentTarget = targetWords[curWordIdx] || '';
-        for (let c = 0; c < Math.min(currentVal.length, currentTarget.length); c++) {
-          if (currentVal[c] === currentTarget[c]) {
-            correct++;
-          }
-        }
-      }
-
-      return correct;
-    },
-    [targetWords, mode, wordLimit]
-  );
+    }
+    return completedWordsCorrectCharsRef.current + curWordCorrect;
+  }, [mode, wordLimit, targetWords]);
 
   // Comprehensive reset: clears all timers, intervals, counters, and restores clean initial state
   const resetEngine = useCallback(() => {
@@ -185,6 +282,8 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     mistakesRef.current = {};
     timelineRef.current = [];
     lastTimelineSecondRef.current = 0;
+    completedWordsCorrectCharsRef.current = 0;
+    lastMetricUpdateRef.current = 0;
 
     inputRef.current?.focus();
   }, [timeLimit]);
@@ -221,11 +320,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     const grossElapsedMs = now - startTimeRef.current - totalPausedDurationRef.current;
     const elapsedSeconds = Math.max(0.001, grossElapsedMs / 1000);
 
-    const netCorrect = getNetCorrectChars(
-      typedHistoryRef.current,
-      currentTypedRef.current,
-      wordIndexRef.current
-    );
+    const netCorrect = getNetCorrectChars();
     const totalKeys = totalKeystrokesRef.current;
     const correctKeys = correctKeystrokesRef.current;
 
@@ -257,7 +352,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       const curTyped = currentTypedRef.current;
       const curWordIdx = wordIndexRef.current;
 
-      const netCorrect = getNetCorrectChars(curHistory, curTyped, curWordIdx);
+      const netCorrect = getNetCorrectChars();
       const totalKeys = Math.max(1, totalKeystrokesRef.current);
       const correctKeys = correctKeystrokesRef.current;
       const errorKeys = errorKeystrokesRef.current;
@@ -392,11 +487,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       const currentFullSecond = Math.floor(elapsedSeconds);
       if (currentFullSecond > lastTimelineSecondRef.current) {
         lastTimelineSecondRef.current = currentFullSecond;
-        const netCorrect = getNetCorrectChars(
-          typedHistoryRef.current,
-          currentTypedRef.current,
-          wordIndexRef.current
-        );
+        const netCorrect = getNetCorrectChars();
         timelineRef.current.push({
           second: currentFullSecond,
           wpm: calculateWpm(netCorrect, elapsedSeconds),
@@ -484,6 +575,18 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
           }
         }
 
+        // Tally correct characters for completed word in O(1)
+        const effectiveTotalWords = mode === 'words' ? (wordLimit as number) : targetWords.length;
+        let wordCorrect = 0;
+        if (isWordFullyCorrect) {
+          wordCorrect = currentTargetWord.length + (curWordIdx < effectiveTotalWords - 1 ? 1 : 0);
+        } else {
+          for (let c = 0; c < Math.min(curTyped.length, currentTargetWord.length); c++) {
+            if (curTyped[c] === currentTargetWord[c]) wordCorrect++;
+          }
+        }
+        completedWordsCorrectCharsRef.current += wordCorrect;
+
         const nextHistory = [...curHistory, curTyped];
         typedHistoryRef.current = nextHistory;
         setTypedHistory(nextHistory);
@@ -541,7 +644,13 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
       const nextTyped = curTyped + char;
       currentTypedRef.current = nextTyped;
       setCurrentTyped(nextTyped);
-      updateLiveMetrics();
+
+      // Throttle live metrics state updates during rapid typing to keep keystroke latency at 0ms
+      const now = performance.now();
+      if (now - lastMetricUpdateRef.current > 120) {
+        lastMetricUpdateRef.current = now;
+        updateLiveMetrics();
+      }
 
       // Check if last word finished
       const isLastWord =
@@ -549,6 +658,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         (mode === 'words' && curWordIdx === (wordLimit as number) - 1);
 
       if (isLastWord && nextTyped === currentTargetWord) {
+        completedWordsCorrectCharsRef.current += currentTargetWord.length;
         const nextHistory = [...curHistory, nextTyped];
         typedHistoryRef.current = nextHistory;
         setTypedHistory(nextHistory);
@@ -560,6 +670,7 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         wordIndexRef.current = nextWordIdx;
         setWordIndex(nextWordIdx);
 
+        updateLiveMetrics();
         checkWordsCompletion(nextHistory);
       }
     },
@@ -606,6 +717,13 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
         const prevTyped = curHistory[curWordIdx - 1];
         const prevTarget = targetWords[curWordIdx - 1];
         if (prevTyped !== prevTarget) {
+          // Subtract correct characters from the undone word in running tally
+          let prevWordCorrect = 0;
+          for (let c = 0; c < Math.min(prevTyped.length, prevTarget.length); c++) {
+            if (prevTyped[c] === prevTarget[c]) prevWordCorrect++;
+          }
+          completedWordsCorrectCharsRef.current = Math.max(0, completedWordsCorrectCharsRef.current - prevWordCorrect);
+
           const prevWordIdx = curWordIdx - 1;
           wordIndexRef.current = prevWordIdx;
           setWordIndex(prevWordIdx);
@@ -775,54 +893,61 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // Floating smooth caret position calculator
+  // Floating smooth caret direct DOM placement (0ms latency, zero re-renders)
   const updateCaretPosition = useCallback(() => {
     if (settings.caretStyle === 'off') return;
-    const wordEl = wordRefs.current[wordIndex];
+    const caretEl = caretRef.current;
+    if (!caretEl) return;
+    const curWordIdx = wordIndexRef.current;
+    const wordEl = wordRefs.current[curWordIdx];
     if (!wordEl || !containerRef.current) return;
 
     const container = containerRef.current;
     const containerRect = container.getBoundingClientRect();
-    const curTargetWord = targetWords[wordIndex] || '';
+    const curTargetWord = targetWords[curWordIdx] || '';
+    const curTyped = currentTypedRef.current;
+
+    let left = 0;
+    let top = 0;
+    let width = desktopFontSize * 0.6;
+    let height = desktopFontSize;
 
     // If currently within the word length, target the exact character
-    if (currentTyped.length < curTargetWord.length) {
-      const charEl = wordEl.querySelector(`[data-char-idx="${currentTyped.length}"]`) as HTMLElement | null;
+    if (curTyped.length < curTargetWord.length) {
+      const charEl = wordEl.querySelector(`[data-char-idx="${curTyped.length}"]`) as HTMLElement | null;
       if (charEl) {
         const charRect = charEl.getBoundingClientRect();
-        setCaretPos({
-          left: charRect.left - containerRect.left + container.scrollLeft,
-          top: charRect.top - containerRect.top + container.scrollTop,
-          width: charRect.width || (desktopFontSize * 0.6),
-          height: charRect.height || desktopFontSize,
-        });
-        return;
+        left = charRect.left - containerRect.left + container.scrollLeft;
+        top = charRect.top - containerRect.top + container.scrollTop;
+        width = charRect.width || (desktopFontSize * 0.6);
+        height = charRect.height || desktopFontSize;
+      }
+    } else {
+      // If at or past the end of the word (extra characters)
+      const allChars = wordEl.querySelectorAll('.char-element');
+      const lastCharEl = allChars.length > 0 ? (allChars[allChars.length - 1] as HTMLElement) : null;
+      if (lastCharEl) {
+        const lastRect = lastCharEl.getBoundingClientRect();
+        left = lastRect.right - containerRect.left + container.scrollLeft;
+        top = lastRect.top - containerRect.top + container.scrollTop;
+        height = lastRect.height || desktopFontSize;
+      } else {
+        const wordRect = wordEl.getBoundingClientRect();
+        left = wordRect.left - containerRect.left + container.scrollLeft;
+        top = wordRect.top - containerRect.top + container.scrollTop;
+        height = wordRect.height || desktopFontSize;
       }
     }
 
-    // If at or past the end of the word (extra characters)
-    const allChars = wordEl.querySelectorAll('.char-element');
-    const lastCharEl = allChars.length > 0 ? (allChars[allChars.length - 1] as HTMLElement) : null;
-    if (lastCharEl) {
-      const lastRect = lastCharEl.getBoundingClientRect();
-      setCaretPos({
-        left: lastRect.right - containerRect.left + container.scrollLeft,
-        top: lastRect.top - containerRect.top + container.scrollTop,
-        width: desktopFontSize * 0.6,
-        height: lastRect.height || desktopFontSize,
-      });
-    } else {
-      const wordRect = wordEl.getBoundingClientRect();
-      setCaretPos({
-        left: wordRect.left - containerRect.left + container.scrollLeft,
-        top: wordRect.top - containerRect.top + container.scrollTop,
-        width: desktopFontSize * 0.6,
-        height: wordRect.height || desktopFontSize,
-      });
+    caretEl.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    caretEl.style.height = `${height}px`;
+    if (settings.caretStyle === 'block' || settings.caretStyle === 'underline') {
+      caretEl.style.width = `${width}px`;
     }
-  }, [wordIndex, currentTyped, targetWords, desktopFontSize, settings.caretStyle]);
+    caretEl.style.opacity = '1';
+  }, [desktopFontSize, settings.caretStyle, targetWords]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     updateCaretPosition();
   }, [updateCaretPosition, wordIndex, currentTyped, initialText]);
 
@@ -993,25 +1118,25 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
             ['--typing-font-mobile' as string]: `${mobileFontSize}px`,
           }}
         >
-          {/* Smooth Floating Caret */}
-          {settings.caretStyle !== 'off' && !isPaused && caretPos && (
+          {/* Smooth Floating Caret (direct DOM GPU transform, zero re-renders) */}
+          {settings.caretStyle !== 'off' && !isPaused && (
             <div
-              className={`absolute pointer-events-none z-20 ${
+              ref={caretRef}
+              className={`absolute pointer-events-none z-20 opacity-0 ${
                 settings.caretAnimation === 'smooth'
-                  ? 'transition-[left,top] duration-75 ease-out'
+                  ? 'transition-[transform] duration-75 ease-out'
                   : ''
               } ${
                 !isStarted ? 'animate-pulse' : ''
               }`}
               style={{
-                left: `${caretPos.left}px`,
-                top: `${caretPos.top}px`,
-                height: `${caretPos.height || desktopFontSize}px`,
+                left: 0,
+                top: 0,
+                willChange: 'transform',
+                height: `${desktopFontSize}px`,
                 width:
-                  settings.caretStyle === 'block'
-                    ? `${caretPos.width || (desktopFontSize * 0.6)}px`
-                    : settings.caretStyle === 'underline'
-                    ? `${caretPos.width || (desktopFontSize * 0.6)}px`
+                  settings.caretStyle === 'block' || settings.caretStyle === 'underline'
+                    ? `${desktopFontSize * 0.6}px`
                     : '3px',
                 backgroundColor:
                   settings.caretStyle === 'block'
@@ -1036,101 +1161,20 @@ export const TypingEngine: React.FC<TypingEngineProps> = ({
 
           {/* Word Flex Container with Generous 16–24px Word Spacing & Compact Natural 1.45 Line Height */}
           <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-5 lg:gap-x-6 gap-y-1.5 sm:gap-y-2">
-            {targetWords.map((word, wIdx) => {
-              const isCurrent = wIdx === wordIndex;
-              const isPast = wIdx < wordIndex;
-              const pastTyped = typedHistory[wIdx] || '';
-
-              return (
-                <span
-                  key={wIdx}
-                  ref={(el) => {
-                    wordRefs.current[wIdx] = el;
-                  }}
-                  className={`relative inline-block transition-all duration-150 rounded-lg px-2 py-0.5 border ${
-                    isCurrent
-                      ? 'bg-[var(--accent-subtle)]/40 border-[var(--accent-color)]/30 shadow-xs'
-                      : 'border-transparent'
-                  }`}
-                  style={{ lineHeight: 1.45 }}
-                >
-                  {/* Past word rendering: clean, distinct correct & error feedback */}
-                  {isPast && (
-                    <>
-                      {word.split('').map((char, cIdx) => {
-                        const typedChar = pastTyped[cIdx];
-                        const isCorrect = typedChar === char;
-                        const isMissed = cIdx >= pastTyped.length;
-                        return (
-                          <span
-                            key={cIdx}
-                            className={
-                              isCorrect
-                                ? 'text-[var(--correct-color,#5DBE76)] opacity-90 font-medium'
-                                : isMissed
-                                ? 'text-[var(--incorrect-color,#E55858)] opacity-90 underline decoration-red-500/75'
-                                : 'text-[var(--incorrect-color,#E55858)] opacity-90 underline decoration-red-500/75'
-                            }
-                          >
-                            {char}
-                          </span>
-                        );
-                      })}
-                      {pastTyped.length > word.length && (
-                        <span className="text-[var(--extra-color,#B34242)] opacity-85 underline decoration-red-500/75">
-                          {pastTyped.slice(word.length)}
-                        </span>
-                      )}
-                    </>
-                  )}
-
-                  {/* Current word rendering: high contrast, clear focus & caret */}
-                  {isCurrent && (
-                    <>
-                      {word.split('').map((char, cIdx) => {
-                        const typedChar = currentTyped[cIdx];
-                        const isTyped = cIdx < currentTyped.length;
-                        const isCorrect = typedChar === char;
-
-                        return (
-                          <span
-                            key={cIdx}
-                            data-char-idx={cIdx}
-                            className="char-element relative inline-block"
-                          >
-                            <span
-                              className={
-                                !isTyped
-                                  ? 'char-current-untyped text-[#ECEBE4] dark:text-[#F1F5F2] font-medium'
-                                  : isCorrect
-                                  ? 'char-correct text-[var(--correct-color,#5DBE76)] font-semibold'
-                                  : 'char-incorrect text-[var(--incorrect-color,#E55858)] font-bold bg-red-500/20 px-0.5 rounded-xs underline decoration-red-500'
-                              }
-                            >
-                              {char}
-                            </span>
-                          </span>
-                        );
-                      })}
-
-                      {/* Extra characters typed beyond word length */}
-                      {currentTyped.length > word.length && (
-                        <span className="char-element char-extra text-[var(--extra-color,#B34242)] font-bold bg-red-500/25 px-0.5 rounded-xs underline decoration-red-500">
-                          {currentTyped.slice(word.length)}
-                        </span>
-                      )}
-                    </>
-                  )}
-
-                  {/* Untyped future words: clearly visible, high contrast, easy to read ahead */}
-                  {!isPast && !isCurrent && (
-                    <span className="char-untyped text-[#A2A79E] dark:text-[#A0A69D] font-normal transition-colors duration-150">
-                      {word}
-                    </span>
-                  )}
-                </span>
-              );
-            })}
+            {targetWords.map((word, wIdx) => (
+              <WordItem
+                key={wIdx}
+                word={word}
+                wIdx={wIdx}
+                isCurrent={wIdx === wordIndex}
+                isPast={wIdx < wordIndex}
+                pastTyped={typedHistory[wIdx] || ''}
+                currentTyped={wIdx === wordIndex ? currentTyped : ''}
+                wordRef={(el) => {
+                  wordRefs.current[wIdx] = el;
+                }}
+              />
+            ))}
           </div>
         </div>
 

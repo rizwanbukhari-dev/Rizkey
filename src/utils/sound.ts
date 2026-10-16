@@ -63,6 +63,16 @@ class SoundEngine {
         subOsc.start(now);
         osc.stop(now + 0.05);
         subOsc.stop(now + 0.065);
+
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            subOsc.disconnect();
+            gain.disconnect();
+            subGain.disconnect();
+            masterGain.disconnect();
+          } catch {}
+        }, 100);
       } else if (theme === 'typewriter') {
         // Sharp metallic clack
         const osc = ctx.createOscillator();
@@ -78,6 +88,14 @@ class SoundEngine {
         gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.045);
+
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+            masterGain.disconnect();
+          } catch {}
+        }, 80);
       } else if (theme === 'click') {
         // Modern crisp UI tick
         const osc = ctx.createOscillator();
@@ -93,6 +111,14 @@ class SoundEngine {
         gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.03);
+
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+            masterGain.disconnect();
+          } catch {}
+        }, 60);
       } else if (theme === 'soft') {
         // Muted bubble tap
         const osc = ctx.createOscillator();
@@ -108,6 +134,14 @@ class SoundEngine {
         gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.055);
+
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+            masterGain.disconnect();
+          } catch {}
+        }, 90);
       }
     } catch {
       // Audio playback failed gracefully
@@ -136,6 +170,13 @@ class SoundEngine {
 
       osc.start(now);
       osc.stop(now + 0.1);
+
+      setTimeout(() => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {}
+      }, 150);
     } catch {
       // Audio playback failed gracefully
     }
@@ -166,6 +207,13 @@ class SoundEngine {
 
         osc.start(noteTime);
         osc.stop(noteTime + 0.35);
+
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch {}
+        }, (idx * 0.08 + 0.4) * 1000);
       });
     } catch {
       // Audio playback failed gracefully
