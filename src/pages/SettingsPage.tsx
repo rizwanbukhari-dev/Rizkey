@@ -6,6 +6,7 @@ import { storage } from '../utils/storage';
 import { soundEngine } from '../utils/sound';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { InstallButton } from '../components/common/InstallButton';
 import { ACCENT_PRESETS, THEME_PRESETS, getThemePreset } from '../data/theme';
 import {
   FontFamily,
@@ -523,6 +524,9 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* APPLICATION & PWA INSTALLATION */}
+        <InstallButton variant="card" />
 
         {/* SECTION 5: DATA MANAGEMENT */}
         <div className="p-6 rounded-2xl bg-[#272824] border border-[#353630]">

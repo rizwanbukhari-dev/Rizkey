@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { ThemeSelector } from './ThemeSelector';
+import { InstallButton } from './InstallButton';
 import { useProgress } from '../../context/ProgressContext';
 
 export const Header: React.FC = () => {
@@ -203,7 +204,7 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Right Controls: Streak & Theme Selector */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {streak.currentStreak > 0 && (
             <div
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#272824] border border-[#353630] text-xs font-mono font-medium text-[var(--accent-color)]"
@@ -213,6 +214,9 @@ export const Header: React.FC = () => {
               <span>{streak.currentStreak}d</span>
             </div>
           )}
+
+          {/* Quick Install App Button */}
+          <InstallButton variant="header" />
 
           {/* Quick Settings Link */}
           <NavLink
@@ -273,6 +277,13 @@ export const Header: React.FC = () => {
 
           <div className="px-3 pt-3 pb-1.5 text-[10px] font-mono text-[#7E8079] uppercase font-semibold border-t border-[#2C2D27]/80 mt-2">
             Tools &amp; Personalization
+          </div>
+          {/* Mobile Install App Option */}
+          <div className="px-1 py-1">
+            <InstallButton
+              variant="mobile-menu"
+              onAction={() => setMobileMenuOpen(false)}
+            />
           </div>
           {secondaryNavItems.map((item) => {
             const Icon = item.icon;

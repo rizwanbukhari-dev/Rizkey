@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useProgress } from '../context/ProgressContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { InstallButton } from '../components/common/InstallButton';
 import { storage } from '../utils/storage';
 import { formatDuration } from '../utils/metrics';
 import {
@@ -46,7 +47,7 @@ export const HomePage: React.FC = () => {
   const nextLessonId = Math.min(15, completedLessons + 1);
 
   return (
-    <div className="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6 animate-fadeIn pb-16">
+    <div className="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6 animate-fadeIn pb-16 min-w-0">
       {/* 1. Welcome Hero Section */}
       <div className="text-center py-6 sm:py-10 mb-8">
         <div className="inline-flex items-center gap-2 mb-3">
@@ -335,6 +336,9 @@ export const HomePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* PWA App Installation Feature Banner */}
+      <InstallButton variant="card" className="mt-8" />
     </div>
   );
 };

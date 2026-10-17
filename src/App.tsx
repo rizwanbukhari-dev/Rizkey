@@ -3,8 +3,10 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { SettingsProvider } from './context/SettingsContext';
 import { ProgressProvider } from './context/ProgressContext';
 import { ToastProvider } from './context/ToastContext';
+import { PWAProvider } from './context/PWAInstallContext';
 import { Header } from './components/common/Header';
 import { Footer } from './components/common/Footer';
+import { InstallModal } from './components/common/InstallModal';
 import { HomePage } from './pages/HomePage';
 import { TestPage } from './pages/TestPage';
 
@@ -34,37 +36,40 @@ export const App: React.FC = () => {
   return (
     <SettingsProvider>
       <ToastProvider>
-        <ProgressProvider>
-          <BrowserRouter>
-            <div className="min-h-screen flex flex-col bg-[var(--bg-color)] text-[var(--text-color)] transition-colors duration-200">
-              <Header />
-              <main className="flex-1 flex flex-col">
-                <Suspense fallback={<PageLoadingFallback />}>
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/test" element={<TestPage />} />
-                    <Route path="/learn" element={<LearnPage />} />
-                    <Route path="/practice" element={<PracticePage />} />
-                    <Route path="/games" element={<GamesPage />} />
-                    <Route path="/developer-lab" element={<DeveloperLabPage />} />
-                    <Route path="/developer" element={<DeveloperLabPage />} />
-                    <Route path="/smart-trainer" element={<SmartTrainerPage />} />
-                    <Route path="/trainer" element={<SmartTrainerPage />} />
-                    <Route path="/statistics" element={<StatisticsPage />} />
-                    <Route path="/progress" element={<StatisticsPage />} />
-                    <Route path="/achievements" element={<AchievementsPage />} />
-                    <Route path="/custom-text" element={<CustomTextPage />} />
-                    <Route path="/custom" element={<CustomTextPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/privacy" element={<PrivacyPage />} />
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Routes>
-                </Suspense>
-              </main>
-              <Footer />
-            </div>
-          </BrowserRouter>
-        </ProgressProvider>
+        <PWAProvider>
+          <ProgressProvider>
+            <BrowserRouter>
+              <div className="min-h-screen flex flex-col bg-[var(--bg-color)] text-[var(--text-color)] transition-colors duration-200 overflow-x-hidden w-full max-w-full min-w-0">
+                <Header />
+                <main className="flex-1 flex flex-col min-w-0">
+                  <Suspense fallback={<PageLoadingFallback />}>
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/test" element={<TestPage />} />
+                      <Route path="/learn" element={<LearnPage />} />
+                      <Route path="/practice" element={<PracticePage />} />
+                      <Route path="/games" element={<GamesPage />} />
+                      <Route path="/developer-lab" element={<DeveloperLabPage />} />
+                      <Route path="/developer" element={<DeveloperLabPage />} />
+                      <Route path="/smart-trainer" element={<SmartTrainerPage />} />
+                      <Route path="/trainer" element={<SmartTrainerPage />} />
+                      <Route path="/statistics" element={<StatisticsPage />} />
+                      <Route path="/progress" element={<StatisticsPage />} />
+                      <Route path="/achievements" element={<AchievementsPage />} />
+                      <Route path="/custom-text" element={<CustomTextPage />} />
+                      <Route path="/custom" element={<CustomTextPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/privacy" element={<PrivacyPage />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                  </Suspense>
+                </main>
+                <Footer />
+                <InstallModal />
+              </div>
+            </BrowserRouter>
+          </ProgressProvider>
+        </PWAProvider>
       </ToastProvider>
     </SettingsProvider>
   );
