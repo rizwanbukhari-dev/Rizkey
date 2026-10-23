@@ -71,6 +71,17 @@ export interface UserSettings {
   reducedMotion: boolean;
 }
 
+export interface LessonPracticeStage {
+  stageIndex: number;
+  title: string;
+  type: 'intro' | 'keys' | 'words';
+  instructions?: string;
+  targetKeys?: string[];
+  exerciseText: string;
+  minAccuracy?: number;
+  minWpm?: number;
+}
+
 export interface Lesson {
   id: number;
   title: string;
@@ -81,6 +92,7 @@ export interface Lesson {
   recommendedFingers: Record<string, string>; // e.g. { 'a': 'Left Pinky', 'f': 'Left Index' }
   instructions: string;
   exerciseText: string;
+  practiceStages?: LessonPracticeStage[];
   minAccuracy: number;
   minWpm: number;
 }
@@ -88,6 +100,8 @@ export interface Lesson {
 export interface LessonProgress {
   lessonId: number;
   completed: boolean;
+  currentStageIndex?: number;
+  completedStageIndices?: number[];
   stars: number; // 1, 2, or 3
   bestWpm: number;
   bestAccuracy: number;

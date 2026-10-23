@@ -1,4 +1,5 @@
 import { TestResult, UserSettings, LessonProgress, CustomPassage, StageProgress, StageExamResult } from '../types/typing';
+import { STAGES } from '../data/lessons';
 
 export const DEFAULT_CUSTOM_PASSAGES: CustomPassage[] = [
   {
@@ -173,6 +174,12 @@ export const storage = {
     allProgress[progress.lessonId] = {
       lessonId: progress.lessonId,
       completed: progress.completed || (existing ? existing.completed : false),
+      currentStageIndex: progress.currentStageIndex !== undefined
+        ? progress.currentStageIndex
+        : existing?.currentStageIndex || 0,
+      completedStageIndices: progress.completedStageIndices !== undefined
+        ? progress.completedStageIndices
+        : existing?.completedStageIndices || [],
       stars: Math.max(progress.stars, existing?.stars || 0),
       bestWpm: Math.max(progress.bestWpm, existing?.bestWpm || 0),
       bestAccuracy: Math.max(progress.bestAccuracy, existing?.bestAccuracy || 0),
@@ -230,6 +237,14 @@ export const storage = {
     return progress[stageNumber - 1]?.examPassed === true;
   },
 
+  isStageExamUnlocked(stageNumber: number): boolean {
+    if (!this.isStageUnlocked(stageNumber)) return false;
+    const stage = STAGES.find((s) => s.number === stageNumber);
+    if (!stage) return false;
+    const lessonProgress = this.getLessonProgress();
+    return stage.lessonIds.every((id) => lessonProgress[id]?.completed === true);
+  },
+
   saveStageExamResult(stageNumber: number, result: StageExamResult): StageProgress {
     if (!this.isStageUnlocked(stageNumber)) {
       throw new Error(`Stage ${stageNumber} is locked.`);
@@ -242,6 +257,10 @@ export const storage = {
       examPassed: false,
       examAttempts: 0,
     };
+
+    if (!existing.examPassed && !this.isStageExamUnlocked(stageNumber)) {
+      throw new Error(`Stage ${stageNumber} exam is locked. Complete all required lessons in this stage first.`);
+    }
 
     const isPassed = result.passed;
     const examPassed = existing.examPassed || isPassed;

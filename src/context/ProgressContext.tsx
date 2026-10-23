@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { TestResult, LessonProgress, Achievement, StageProgress, StageExamResult } from '../types/typing';
 import { storage, StreakData } from '../utils/storage';
 import { ALL_ACHIEVEMENTS, evaluateAchievements } from '../data/achievements';
+import { STAGES } from '../data/lessons';
 
 interface ProgressContextType {
   results: TestResult[];
@@ -23,6 +24,7 @@ interface ProgressContextType {
   saveLesson: (progress: LessonProgress) => string[];
   saveStageExam: (stageNumber: number, result: StageExamResult) => { passed: boolean; newUnlocks: string[] };
   isStageUnlocked: (stageNumber: number) => boolean;
+  isStageExamUnlocked: (stageNumber: number) => boolean;
   saveGameResult: (gameId: string, score: number) => { isNewBest: boolean; newUnlocks: string[] };
   deleteTestResult: (id: string) => void;
   reloadAllData: () => void;
@@ -218,6 +220,13 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return stageProgress[stageNumber - 1]?.examPassed === true;
   }, [stageProgress]);
 
+  const isStageExamUnlocked = useCallback((stageNumber: number) => {
+    if (!isStageUnlocked(stageNumber)) return false;
+    const stage = STAGES.find((s) => s.number === stageNumber);
+    if (!stage) return false;
+    return stage.lessonIds.every((id) => lessons[id]?.completed === true);
+  }, [isStageUnlocked, lessons]);
+
   return (
     <ProgressContext.Provider
       value={{
@@ -239,6 +248,7 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         saveLesson,
         saveStageExam,
         isStageUnlocked,
+        isStageExamUnlocked,
         saveGameResult,
         reloadAllData,
         clearAllHistory,

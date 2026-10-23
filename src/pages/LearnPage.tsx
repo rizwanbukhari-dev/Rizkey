@@ -20,18 +20,22 @@ import {
   Lock,
   Trophy,
   AlertTriangle,
+  Layers,
 } from 'lucide-react';
 
 export const LearnPage: React.FC = () => {
-  const { lessons, stageProgress, saveLesson, saveStageExam, isStageUnlocked } = useProgress();
+  const { lessons, stageProgress, saveLesson, saveStageExam, isStageUnlocked, isStageExamUnlocked } = useProgress();
   const { toast } = useToast();
 
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
+  const [activeStageIndex, setActiveStageIndex] = useState<number>(0);
   const [exerciseResult, setExerciseResult] = useState<{
     passed: boolean;
     wpm: number;
     accuracy: number;
     stars: number;
+    isStageFinal: boolean;
+    stageIndex: number;
   } | null>(null);
 
   // Stage Exam State
@@ -78,8 +82,30 @@ export const LearnPage: React.FC = () => {
     return { type: 'exam' as const, stage: currentStage };
   }, [isStageUnlocked, stageProgress, lessons, completedStagesCount]);
 
-  // Start regular lesson
-  const startLesson = (lesson: Lesson, stage: Stage) => {
+  // Get active practice stages for the currently opened lesson
+  const currentPracticeStages = useMemo(() => {
+    if (!activeLesson) return [];
+    if (activeLesson.practiceStages && activeLesson.practiceStages.length > 0) {
+      return activeLesson.practiceStages;
+    }
+    return [
+      {
+        stageIndex: 0,
+        title: 'Core Practice',
+        type: 'words' as const,
+        instructions: activeLesson.instructions,
+        targetKeys: activeLesson.targetKeys,
+        exerciseText: activeLesson.exerciseText,
+        minAccuracy: activeLesson.minAccuracy,
+        minWpm: activeLesson.minWpm,
+      },
+    ];
+  }, [activeLesson]);
+
+  const currentPracticeStage = currentPracticeStages[activeStageIndex] || currentPracticeStages[0];
+
+  // Start regular lesson with safe practice stage selection
+  const startLesson = (lesson: Lesson, stage: Stage, targetStageIndex?: number) => {
     if (!isStageUnlocked(stage.number)) {
       toast.error(`Stage ${stage.number} is locked. Pass the Stage ${stage.number - 1} exam to unlock.`);
       return;
@@ -87,18 +113,56 @@ export const LearnPage: React.FC = () => {
     setActiveExamStage(null);
     setExamResult(null);
     setActiveLesson(lesson);
+
+    const progress = lessons[lesson.id];
+    let selectedIndex = 0;
+    if (targetStageIndex !== undefined) {
+      selectedIndex = targetStageIndex;
+    } else if (progress?.completed) {
+      selectedIndex = 0;
+    } else if (progress?.currentStageIndex !== undefined) {
+      selectedIndex = progress.currentStageIndex;
+    }
+
+    const availableStagesCount = lesson.practiceStages?.length || 1;
+    if (selectedIndex >= availableStagesCount) {
+      selectedIndex = 0;
+    }
+
+    setActiveStageIndex(selectedIndex);
+    setExerciseResult(null);
+    setEngineKey((k) => k + 1);
+  };
+
+  const startLessonStage = (stageIndex: number) => {
+    if (!activeLesson) return;
+    setActiveStageIndex(stageIndex);
     setExerciseResult(null);
     setEngineKey((k) => k + 1);
   };
 
   const handleLessonComplete = (rawResult: { wpm: number; accuracy: number }) => {
-    if (!activeLesson) return;
+    if (!activeLesson || !currentPracticeStage) return;
 
     const { wpm, accuracy } = rawResult;
-    const passed = accuracy >= activeLesson.minAccuracy && wpm >= activeLesson.minWpm;
+    const requiredAccuracy = currentPracticeStage.minAccuracy || activeLesson.minAccuracy;
+    const requiredWpm = currentPracticeStage.minWpm || activeLesson.minWpm;
+    const passed = accuracy >= requiredAccuracy && wpm >= requiredWpm;
+
+    const totalStagesInLesson = currentPracticeStages.length;
+    const isStageFinal = activeStageIndex >= totalStagesInLesson - 1;
+
+    const existingProgress = lessons[activeLesson.id];
+    const prevCompletedStages = existingProgress?.completedStageIndices || [];
+    const newCompletedStages = passed
+      ? Array.from(new Set([...prevCompletedStages, activeStageIndex]))
+      : prevCompletedStages;
+
+    // A lesson is ONLY marked completed when ALL required practice stages are passed
+    const isLessonFullyCompleted = passed && (isStageFinal || newCompletedStages.length >= totalStagesInLesson);
 
     let stars = 0;
-    if (passed) {
+    if (isLessonFullyCompleted) {
       if (accuracy >= 98 && wpm >= activeLesson.minWpm * 1.3) {
         stars = 3;
       } else if (accuracy >= 95 && wpm >= activeLesson.minWpm * 1.15) {
@@ -108,47 +172,76 @@ export const LearnPage: React.FC = () => {
       }
     }
 
-    const progress: LessonProgress = {
+    const nextStageIdx = passed
+      ? (isStageFinal ? 0 : activeStageIndex + 1)
+      : activeStageIndex;
+
+    const updatedProgress: LessonProgress = {
       lessonId: activeLesson.id,
-      completed: passed,
-      stars: Math.max(stars, lessons[activeLesson.id]?.stars || 0),
-      bestWpm: Math.max(wpm, lessons[activeLesson.id]?.bestWpm || 0),
-      bestAccuracy: Math.max(accuracy, lessons[activeLesson.id]?.bestAccuracy || 0),
-      attempts: (lessons[activeLesson.id]?.attempts || 0) + 1,
+      completed: isLessonFullyCompleted || (existingProgress?.completed ?? false),
+      currentStageIndex: nextStageIdx,
+      completedStageIndices: newCompletedStages,
+      stars: Math.max(stars, existingProgress?.stars || 0),
+      bestWpm: Math.max(wpm, existingProgress?.bestWpm || 0),
+      bestAccuracy: Math.max(accuracy, existingProgress?.bestAccuracy || 0),
+      attempts: (existingProgress?.attempts || 0) + 1,
       lastAttemptAt: Date.now(),
     };
 
-    saveLesson(progress);
-    setExerciseResult({ passed, wpm, accuracy, stars });
+    saveLesson(updatedProgress);
+    setExerciseResult({
+      passed,
+      wpm,
+      accuracy,
+      stars,
+      isStageFinal,
+      stageIndex: activeStageIndex,
+    });
 
     if (passed) {
-      toast.success(`Lesson completed with ${stars} star${stars > 1 ? 's' : ''}!`);
+      if (isLessonFullyCompleted) {
+        toast.success(`Lesson ${activeLesson.id} Mastered with ${stars} star${stars > 1 ? 's' : ''}!`);
+      } else {
+        toast.info(`Practice Stage ${activeStageIndex + 1} of ${totalStagesInLesson} completed! Ready for the next drill.`);
+      }
     } else {
-      toast.error('Accuracy or speed below goal. Try again to lock in muscle memory.');
+      toast.error(`Target: ${requiredWpm} WPM & ${requiredAccuracy}% Accuracy. Keep practicing!`);
     }
   };
 
   const handleNextLesson = () => {
     if (!activeLesson) return;
     const currentStage = STAGES.find((s) => s.lessonIds.includes(activeLesson.id));
-    const nextInSameStage = currentStage?.lessonIds.find((id) => id > activeLesson.id);
+    if (!currentStage) return;
 
-    if (currentStage && nextInSameStage) {
-      const nextLesson = LESSONS.find((l) => l.id === nextInSameStage);
+    // If there is an unfinished practice stage within the active lesson, proceed to it
+    if (activeStageIndex < currentPracticeStages.length - 1) {
+      startLessonStage(activeStageIndex + 1);
+      return;
+    }
+
+    // If this lesson is complete, find the next sequential lesson in the same stage
+    const currentLessonIdx = currentStage.lessonIds.indexOf(activeLesson.id);
+    if (currentLessonIdx !== -1 && currentLessonIdx < currentStage.lessonIds.length - 1) {
+      const nextLessonId = currentStage.lessonIds[currentLessonIdx + 1];
+      const nextLesson = LESSONS.find((l) => l.id === nextLessonId);
       if (nextLesson) {
-        startLesson(nextLesson, currentStage);
+        startLesson(nextLesson, currentStage, 0);
         return;
       }
     }
 
-    // If finished lessons in this stage, suggest the stage exam!
-    if (currentStage) {
+    // All lessons in this stage are completed!
+    // Check if stage exam is unlocked
+    const allStageLessonsDone = currentStage.lessonIds.every((id) => lessons[id]?.completed);
+    if (allStageLessonsDone) {
       setActiveLesson(null);
       startExam(currentStage);
       toast.info(`All Stage ${currentStage.number} lessons complete! Ready for the Stage Exam.`);
       return;
     }
 
+    // Return to curriculum view if unfinished lessons remain
     setActiveLesson(null);
   };
 
@@ -156,6 +249,11 @@ export const LearnPage: React.FC = () => {
   const startExam = (stage: Stage) => {
     if (!isStageUnlocked(stage.number)) {
       toast.error(`Stage ${stage.number} is locked. Pass the Stage ${stage.number - 1} exam first.`);
+      return;
+    }
+    const isExamPassed = stageProgress[stage.number]?.examPassed;
+    if (!isExamPassed && !isStageExamUnlocked(stage.number)) {
+      toast.error(`Stage ${stage.number} exam is locked. Please complete all lessons in this stage first.`);
       return;
     }
     setActiveLesson(null);
@@ -214,7 +312,7 @@ export const LearnPage: React.FC = () => {
 
               <h1 className="text-2xl font-bold text-[#ECEBE4] flex items-center gap-2.5">
                 <BookOpen className="w-6 h-6 text-[var(--accent-color)]" />
-                <span>Lesson {activeLesson.id}: {activeLesson.title}</span>
+                <span>Lesson {activeLesson.id}: {activeLesson.title.replace(/^\d+\.\s*/, '')}</span>
               </h1>
               <p className="text-xs text-[#989A92] mt-0.5">
                 {activeLesson.subtitle}
@@ -224,20 +322,71 @@ export const LearnPage: React.FC = () => {
             {/* Target Criteria Badges */}
             <div className="flex items-center gap-2">
               <Badge variant="amber" size="xs">
-                Goal: {activeLesson.minWpm} WPM
+                Goal: {currentPracticeStage?.minWpm || activeLesson.minWpm} WPM
               </Badge>
               <Badge variant="green" size="xs">
-                Min: {activeLesson.minAccuracy}% Acc
+                Min: {currentPracticeStage?.minAccuracy || activeLesson.minAccuracy}% Acc
               </Badge>
             </div>
           </div>
 
-          {/* Posture Tip Banner */}
+          {/* Multi-Stage Step Progression Stepper */}
+          {currentPracticeStages.length > 1 && (
+            <div className="p-3 sm:p-4 rounded-xl bg-[#272824] border border-[#353630]">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-mono font-bold text-[#ECEBE4] flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[var(--accent-color)]" />
+                  <span>Practice Stages ({activeStageIndex + 1} of {currentPracticeStages.length})</span>
+                </span>
+                <span className="text-[11px] font-mono text-[#989A92]">
+                  {lessons[activeLesson.id]?.completed ? 'Lesson Mastered' : `${lessons[activeLesson.id]?.completedStageIndices?.length || 0} of ${currentPracticeStages.length} completed`}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {currentPracticeStages.map((ps, idx) => {
+                  const isCompleted = lessons[activeLesson.id]?.completedStageIndices?.includes(idx);
+                  const isCurrent = idx === activeStageIndex;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => startLessonStage(idx)}
+                      className={`p-2.5 rounded-lg text-left transition-all font-mono text-xs cursor-pointer border ${
+                        isCurrent
+                          ? 'bg-[#20211D] border-[var(--accent-color)] text-[var(--accent-color)] font-bold shadow-xs'
+                          : isCompleted
+                          ? 'bg-[#20211D]/60 border-[#5DBE76]/40 text-[#ECEBE4] hover:border-[#5DBE76]'
+                          : 'bg-[#20211D]/30 border-[#30312B] text-[#7E8079] hover:text-[#989A92]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] uppercase tracking-wider text-[#989A92]">
+                          Stage {idx + 1}
+                        </span>
+                        {isCompleted && <Check className="w-3.5 h-3.5 text-[#5DBE76]" />}
+                      </div>
+                      <div className="truncate font-medium">{ps.title}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Posture & Stage Tip Banner */}
           <div className="p-4 rounded-xl bg-[#272824] border border-[#353630] flex items-start gap-3 text-xs leading-relaxed">
             <Info className="w-4 h-4 text-[var(--accent-color)] shrink-0 mt-0.5" />
             <div>
-              <strong className="text-[#ECEBE4] font-mono block mb-0.5">Posture &amp; Finger Guidance:</strong>
-              <span className="text-[#989A92]">{activeLesson.postureTip}</span>
+              <strong className="text-[#ECEBE4] font-mono block mb-0.5">
+                {currentPracticeStage?.title ? `${currentPracticeStage.title} Instructions:` : 'Guidance:'}
+              </strong>
+              <span className="text-[#989A92]">
+                {currentPracticeStage?.instructions || activeLesson.instructions}
+              </span>
+              <span className="block mt-1 text-[#7E8079]">
+                <strong className="text-[#ECEBE4]">Posture note: </strong>
+                {activeLesson.postureTip}
+              </span>
             </div>
           </div>
 
@@ -245,7 +394,7 @@ export const LearnPage: React.FC = () => {
           <div className="bg-[#272824]/60 border border-[#353630] rounded-2xl p-6 sm:p-8">
             {exerciseResult ? (
               /* Exercise Result Screen */
-              <div className="text-center py-6 space-y-6">
+              <div className="text-center py-6 space-y-6 animate-fadeIn">
                 <div>
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#20211D] border border-[#353630] mb-3">
                     {exerciseResult.passed ? (
@@ -256,11 +405,15 @@ export const LearnPage: React.FC = () => {
                   </div>
 
                   <h2 className="text-2xl font-bold text-[#ECEBE4] font-mono">
-                    {exerciseResult.passed ? 'Lesson Mastered!' : 'Keep Practicing'}
+                    {exerciseResult.passed
+                      ? exerciseResult.isStageFinal || currentPracticeStages.length <= 1
+                        ? 'Lesson Mastered!'
+                        : `Stage ${exerciseResult.stageIndex + 1} Complete!`
+                      : 'Keep Practicing'}
                   </h2>
 
-                  {/* Stars */}
-                  {exerciseResult.passed && (
+                  {/* Stars for fully completed lesson */}
+                  {exerciseResult.passed && (exerciseResult.isStageFinal || currentPracticeStages.length <= 1) && (
                     <div className="flex items-center justify-center gap-1.5 my-3">
                       {[1, 2, 3].map((s) => (
                         <Star
@@ -275,20 +428,22 @@ export const LearnPage: React.FC = () => {
                     </div>
                   )}
 
-                  <p className="text-xs text-[#989A92] max-w-md mx-auto mt-2">
+                  <p className="text-xs text-[#989A92] max-w-md mx-auto mt-2 leading-relaxed font-mono">
                     {exerciseResult.passed
-                      ? 'Excellent work! You hit the target speed and accuracy thresholds.'
-                      : `You achieved ${exerciseResult.wpm} WPM and ${exerciseResult.accuracy}% accuracy. Goal: ${activeLesson.minWpm} WPM and ${activeLesson.minAccuracy}% accuracy.`}
+                      ? exerciseResult.isStageFinal || currentPracticeStages.length <= 1
+                        ? `Sensational! You completed all practice stages with ${exerciseResult.wpm} WPM and ${exerciseResult.accuracy}% accuracy.`
+                        : `Solid precision! You achieved ${exerciseResult.wpm} WPM and ${exerciseResult.accuracy}% accuracy. Proceed to Stage ${exerciseResult.stageIndex + 2} to advance your mastery.`
+                      : `You achieved ${exerciseResult.wpm} WPM and ${exerciseResult.accuracy}% accuracy. Goal: ${currentPracticeStage?.minWpm || activeLesson.minWpm} WPM and ${currentPracticeStage?.minAccuracy || activeLesson.minAccuracy}% accuracy.`}
                   </p>
                 </div>
 
                 {/* Score Stats */}
                 <div className="flex justify-center gap-6 font-mono text-xs">
-                  <div className="p-3 rounded-xl bg-[#20211D] border border-[#353630] min-w-[100px]">
+                  <div className="p-3 rounded-xl bg-[#20211D] border border-[#353630] min-w-[110px]">
                     <span className="text-[10px] text-[#989A92] uppercase block">Speed</span>
                     <span className="text-lg font-bold text-[var(--accent-color)]">{exerciseResult.wpm} WPM</span>
                   </div>
-                  <div className="p-3 rounded-xl bg-[#20211D] border border-[#353630] min-w-[100px]">
+                  <div className="p-3 rounded-xl bg-[#20211D] border border-[#353630] min-w-[110px]">
                     <span className="text-[10px] text-[#989A92] uppercase block">Accuracy</span>
                     <span className="text-lg font-bold text-[#5DBE76]">{exerciseResult.accuracy}%</span>
                   </div>
@@ -299,23 +454,31 @@ export const LearnPage: React.FC = () => {
                   <Button
                     variant="secondary"
                     size="md"
-                    onClick={() => {
-                      const currentStage = STAGES.find((s) => s.lessonIds.includes(activeLesson.id)) || STAGES[0];
-                      startLesson(activeLesson, currentStage);
-                    }}
+                    onClick={() => startLessonStage(activeStageIndex)}
                     leftIcon={<RotateCcw className="w-4 h-4" />}
                   >
-                    Repeat Lesson
+                    Repeat {currentPracticeStages.length > 1 ? `Stage ${activeStageIndex + 1}` : 'Lesson'}
                   </Button>
 
-                  {exerciseResult.passed && (
+                  {exerciseResult.passed && !exerciseResult.isStageFinal && activeStageIndex < currentPracticeStages.length - 1 && (
+                    <Button
+                      variant="primary"
+                      size="md"
+                      onClick={() => startLessonStage(activeStageIndex + 1)}
+                      rightIcon={<ArrowRight className="w-4 h-4" />}
+                    >
+                      Next Practice Stage
+                    </Button>
+                  )}
+
+                  {exerciseResult.passed && (exerciseResult.isStageFinal || currentPracticeStages.length <= 1) && (
                     <Button
                       variant="primary"
                       size="md"
                       onClick={handleNextLesson}
                       rightIcon={<ArrowRight className="w-4 h-4" />}
                     >
-                      Next Step
+                      Next Lesson
                     </Button>
                   )}
 
@@ -332,13 +495,10 @@ export const LearnPage: React.FC = () => {
               /* Running Lesson Engine */
               <TypingEngine
                 key={engineKey}
-                initialText={activeLesson.exerciseText}
+                initialText={currentPracticeStage?.exerciseText || activeLesson.exerciseText}
                 mode="custom"
                 onComplete={handleLessonComplete}
-                onRestart={() => {
-                  const currentStage = STAGES.find((s) => s.lessonIds.includes(activeLesson.id)) || STAGES[0];
-                  startLesson(activeLesson, currentStage);
-                }}
+                onRestart={() => startLessonStage(activeStageIndex)}
               />
             )}
           </div>
@@ -470,7 +630,7 @@ export const LearnPage: React.FC = () => {
                         <span>Stage {activeExamStage.number + 1}: {STAGES[activeExamStage.number].title} Unlocked!</span>
                       </span>
                       <p className="text-[11px] text-[#989A92]">
-                        You can now proceed to the next stage and advance your mastery.
+                        You can now proceed to the next stage lessons and continue your progression.
                       </p>
                     </div>
                   ) : (
@@ -507,17 +667,23 @@ export const LearnPage: React.FC = () => {
                     {examResult.passed ? 'Retake Exam' : 'Retry Stage Exam'}
                   </Button>
 
+                  {/* Proceed to NEXT STAGE LESSON (NOT next stage exam!) */}
                   {examResult.passed && activeExamStage.number < STAGES.length && (
                     <Button
                       variant="primary"
                       size="md"
                       onClick={() => {
                         const nextStage = STAGES[activeExamStage.number];
-                        startExam(nextStage);
+                        const firstLessonOfNextStage = LESSONS.find((l) => l.id === nextStage.lessonIds[0]);
+                        if (firstLessonOfNextStage) {
+                          startLesson(firstLessonOfNextStage, nextStage, 0);
+                        } else {
+                          setActiveExamStage(null);
+                        }
                       }}
                       rightIcon={<ArrowRight className="w-4 h-4" />}
                     >
-                      Proceed to Stage {activeExamStage.number + 1}
+                      Proceed to Stage {activeExamStage.number + 1}: Lesson {STAGES[activeExamStage.number].lessonIds[0]}
                     </Button>
                   )}
 
@@ -557,7 +723,7 @@ export const LearnPage: React.FC = () => {
               <span>Touch Typing Academy</span>
             </h1>
             <p className="text-xs sm:text-sm text-[#989A92] mt-1 max-w-2xl leading-relaxed">
-              A 10-stage sequential curriculum with stage-ending exams. Complete lessons and pass each stage exam to unlock future stages and earn complete mastery.
+              A 10-stage sequential curriculum with stage-ending exams. Complete every practice stage and pass each stage exam to unlock future stages and earn complete mastery.
             </p>
           </div>
 
@@ -675,6 +841,7 @@ export const LearnPage: React.FC = () => {
               const allLessonsDone = stageCompletedLessons === stageLessons.length;
 
               const isUnlocked = isStageUnlocked(stage.number);
+              const isExamUnlocked = isStageExamUnlocked(stage.number);
               const progress = stageProgress[stage.number];
               const isExamPassed = progress?.examPassed;
               const isExamFailed = progress?.status === 'exam_failed';
@@ -761,7 +928,9 @@ export const LearnPage: React.FC = () => {
                           : isExamFailed
                           ? `Exam Needs Retry`
                           : isUnlocked
-                          ? 'Exam Pending'
+                          ? allLessonsDone
+                            ? 'Exam Unlocked'
+                            : 'Exam Locked'
                           : 'Stage Locked'}
                       </span>
                     </div>
@@ -780,9 +949,12 @@ export const LearnPage: React.FC = () => {
                   {/* Stage Lessons Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
                     {stageLessons.map((lesson) => {
-                      const progress = lessons[lesson.id];
-                      const isCompleted = progress?.completed;
-                      const stars = progress?.stars || 0;
+                      const prog = lessons[lesson.id];
+                      const isCompleted = prog?.completed;
+                      const stars = prog?.stars || 0;
+                      const completedStagesCountInLesson = prog?.completedStageIndices?.length || 0;
+                      const totalPracticeStagesCount = lesson.practiceStages?.length || 1;
+                      const isPartiallyDone = !isCompleted && completedStagesCountInLesson > 0;
 
                       return (
                         <div
@@ -809,11 +981,15 @@ export const LearnPage: React.FC = () => {
                                       className={`w-3 h-3 ${
                                         s <= stars
                                           ? 'text-[var(--accent-color)] fill-[var(--accent-color)]'
-                                        : 'text-[#353630]'
+                                          : 'text-[#353630]'
                                       }`}
                                     />
                                   ))}
                                 </div>
+                              ) : isPartiallyDone ? (
+                                <Badge variant="amber" size="xs">
+                                  Step {completedStagesCountInLesson + 1}/{totalPracticeStagesCount}
+                                </Badge>
                               ) : (
                                 <Badge variant="gray" size="xs">
                                   Ready
@@ -832,7 +1008,7 @@ export const LearnPage: React.FC = () => {
 
                           <div className="pt-2 border-t border-[#353630]/60 flex items-center justify-between">
                             <span className="text-[11px] font-mono text-[#7E8079]">
-                              {isCompleted && progress?.bestWpm ? `${progress.bestWpm} WPM` : `${lesson.minWpm}+ WPM target`}
+                              {isCompleted && prog?.bestWpm ? `${prog.bestWpm} WPM` : `${lesson.minWpm}+ WPM target`}
                             </span>
 
                             <Button
@@ -842,7 +1018,7 @@ export const LearnPage: React.FC = () => {
                               onClick={() => isUnlocked && startLesson(lesson, stage)}
                               rightIcon={!isUnlocked ? <Lock className="w-3 h-3" /> : <ArrowRight className="w-3 h-3" />}
                             >
-                              {!isUnlocked ? 'Locked' : isCompleted ? 'Repeat' : 'Start'}
+                              {!isUnlocked ? 'Locked' : isCompleted ? 'Repeat' : isPartiallyDone ? 'Continue' : 'Start'}
                             </Button>
                           </div>
                         </div>
@@ -859,6 +1035,8 @@ export const LearnPage: React.FC = () => {
                         ? 'bg-[#5DBE76]/10 border-[#5DBE76]/30'
                         : isExamFailed
                         ? 'bg-amber-500/10 border-amber-500/35'
+                        : !isExamUnlocked
+                        ? 'bg-[#20211D]/50 border-[#353630]'
                         : 'bg-[#20211D] border-[#353630]'
                     }`}
                   >
@@ -870,7 +1048,9 @@ export const LearnPage: React.FC = () => {
                               ? 'text-[#5DBE76]'
                               : isExamFailed
                               ? 'text-amber-400'
-                              : 'text-[var(--accent-color)]'
+                              : isExamUnlocked
+                              ? 'text-[var(--accent-color)]'
+                              : 'text-[#7E8079]'
                           }`}
                         />
                         <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#ECEBE4]">
@@ -882,7 +1062,7 @@ export const LearnPage: React.FC = () => {
                         {stage.exam.description}
                       </p>
 
-                      <div className="flex items-center gap-3 mt-2 text-[11px] font-mono text-[#7E8079]">
+                      <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] font-mono text-[#7E8079]">
                         <span>Passing Rule: {stage.exam.minWpm}+ WPM &bull; {stage.exam.minAccuracy}% Accuracy</span>
                         {isExamPassed && progress?.bestWpm && (
                           <span className="text-[#5DBE76] font-semibold">
@@ -894,17 +1074,28 @@ export const LearnPage: React.FC = () => {
                             Last attempt: {progress.lastExamResult.wpm} WPM ({progress.lastExamResult.accuracy}%)
                           </span>
                         )}
+                        {!isExamPassed && isUnlocked && !isExamUnlocked && (
+                          <span className="text-amber-400/90 font-medium">
+                            Complete all {stageLessons.length} stage lessons to unlock ({stageCompletedLessons}/{stageLessons.length} done)
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     <div className="shrink-0">
                       <Button
-                        variant={!isUnlocked ? 'ghost' : isExamPassed ? 'secondary' : 'primary'}
+                        variant={
+                          !isUnlocked || (!isExamUnlocked && !isExamPassed)
+                            ? 'ghost'
+                            : isExamPassed
+                            ? 'secondary'
+                            : 'primary'
+                        }
                         size="sm"
-                        disabled={!isUnlocked}
-                        onClick={() => isUnlocked && startExam(stage)}
+                        disabled={!isUnlocked || (!isExamUnlocked && !isExamPassed)}
+                        onClick={() => isUnlocked && (isExamUnlocked || isExamPassed) && startExam(stage)}
                         leftIcon={
-                          !isUnlocked ? (
+                          !isUnlocked || (!isExamUnlocked && !isExamPassed) ? (
                             <Lock className="w-3.5 h-3.5" />
                           ) : isExamFailed ? (
                             <RotateCcw className="w-3.5 h-3.5" />
@@ -914,7 +1105,9 @@ export const LearnPage: React.FC = () => {
                         }
                       >
                         {!isUnlocked
-                          ? 'Exam Locked'
+                          ? 'Stage Locked'
+                          : !isExamUnlocked && !isExamPassed
+                          ? `Exam Locked (${stageCompletedLessons}/${stageLessons.length})`
                           : isExamPassed
                           ? 'Retake Stage Exam'
                           : isExamFailed
